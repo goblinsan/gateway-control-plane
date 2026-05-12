@@ -1,0 +1,159 @@
+project: "Gateway Control Plane UI Rebuild"
+repository: "goblinsan/gateway-control-plane"
+
+metadata:
+  name: gateway-control-plane-ui-rebuild-epics
+  title: "Gateway Control Plane UI Rebuild"
+  created: "2026-04-16"
+  status: planned
+  summary: >
+    Replace the current config-heavy control-plane admin experience with an
+    operations-first UI that starts on health and system state, uses a clearer
+    navigation model, provides first-class action feedback for long-running
+    operations, and breaks the monolithic admin-ui implementation into safer
+    front-end seams. This version of the plan intentionally uses a small number
+    of larger, assignable epics instead of a fine-grained task ladder.
+
+milestones:
+  - title: "Phase 1: Shell and Overview Foundation"
+    due_on: ""
+    description: >
+      Establish the new information architecture, the default Overview landing
+      page, and the shared shell and design system needed for the rebuild.
+  - title: "Phase 2: Operational Surfaces and Action UX"
+    due_on: ""
+    description: >
+      Rework the main operating surfaces so actions, status, and configuration
+      are easier to find and reason about.
+  - title: "Phase 3: Front-End Resilience and Ship Readiness"
+    due_on: ""
+    description: >
+      Reduce fragility in the admin UI implementation, tighten loading and
+      rendering boundaries, and add the documentation and regression coverage
+      needed to keep the new UI maintainable.
+
+epics:
+  - title: "Operations-first shell, navigation, and health-first Overview"
+    body: >
+      Rebuild the top-level control-plane UI shell around the actual operator
+      workflow instead of the current config-first tab structure. This epic
+      should deliver the new information architecture and the first usable slice
+      of the rebuild.
+
+      In scope:
+      - Define and implement the new top-level navigation model:
+        Overview, Bootstrap, Nodes, Workloads, Monitor, Secrets.
+      - Make Overview the default landing page.
+      - Use existing runtime and health data to build a health-first landing
+        surface that immediately answers:
+        - what is healthy
+        - what is degraded
+        - what requires action
+      - Introduce the shared shell and page framing that future pages will live
+        within.
+      - Introduce the initial visual system using the specified fonts:
+        Passion One, Karla, and Fira Sans.
+      - Introduce a tokenized color and spacing system using the
+        palette-2026-04-17 values rather than generic admin defaults.
+
+      Expected outcome:
+      - The control-plane stops landing in obscure service/config tabs.
+      - The first screen becomes operationally meaningful.
+      - The rebuild gets a stable layout and design foundation instead of
+        layering more changes into the existing monolith.
+
+      Out of scope:
+      - full rewrite of every existing page
+      - complete module extraction of all UI logic
+      - deep action-console streaming work beyond what is required to support
+        the new shell framing
+    milestone: "Phase 1: Shell and Overview Foundation"
+    status: "Todo"
+    labels: ["control-plane", "frontend", "ux", "admin-ui"]
+    assignees: ["goblinsan"]
+
+  - title: "Operational pages for Bootstrap, Nodes, Workloads, Monitor, and Secrets"
+    body: >
+      Rework the main operating surfaces so the UI matches the actual mental
+      model of running the gateway. The goal is not a cosmetic rearrangement;
+      it is to make setup, status checks, deploys, and sensitive configuration
+      findable without clicking through obscure paths.
+
+      In scope:
+      - Bootstrap page:
+        - frame gateway and control-plane bring-up as setup tasks, not a raw
+          wall of fields
+      - Nodes page:
+        - highlight machine inventory, setup/provisioning actions, connectivity,
+          and capability summaries
+      - Workloads page:
+        - reorganize apps, remote services, host jobs, workflows, and runtime
+          profiles into one coherent operational surface
+      - Monitor page:
+        - make health, degradation, and history feel like a dashboard rather
+          than a set of scattered cards
+      - Secrets page:
+        - isolate secrets and credentials from general runtime config with a
+          clearer guarded editing experience
+      - Long-running actions:
+        - improve button busy states, disable rules, and visible completion
+          feedback across these surfaces
+        - introduce a first-class action/output area so the operator can see
+          what a just-triggered action is doing
+
+      Expected outcome:
+      - The operator can move through setup, deployment, and monitoring through
+        obvious pages rather than remembering buried section paths.
+      - The major pages feel purpose-built for operations.
+      - Long-running actions feel acknowledged and observable.
+
+      Out of scope:
+      - replacing backend APIs unless required to support clear async UI state
+      - exhaustive redesign of every form row if the page-level structure is not
+        yet in place
+    milestone: "Phase 2: Operational Surfaces and Action UX"
+    status: "Todo"
+    labels: ["control-plane", "frontend", "ux", "operations"]
+    assignees: ["goblinsan"]
+
+  - title: "Modularize admin-ui, tighten lazy loading, and harden the rebuilt UI"
+    body: >
+      The current admin UI is fragile because most of the shell, page markup,
+      state, and rendering logic live in a very large `admin-ui.ts` file. This
+      epic is the architectural hardening pass that makes the rebuild safe to
+      maintain after the new shell and operational pages land.
+
+      In scope:
+      - Break the monolithic admin UI into page-level or domain-level modules,
+        including at minimum:
+        - shell/layout
+        - overview
+        - bootstrap
+        - nodes
+        - workloads
+        - monitoring
+        - secrets
+        - action/output surfaces
+      - Replace broad global render passes with page-scoped or section-scoped
+        renderers where practical.
+      - Keep and improve lazy loading so pages fetch only what they need and
+        local loading indicators reflect active work.
+      - Add responsive layout rules for narrower operator viewports.
+      - Audit accessibility, focus handling, and keyboard navigation.
+      - Add regression coverage for the highest-risk UI flows introduced by the
+        rebuild.
+      - Document the new architecture, navigation model, and UI conventions so
+        future changes do not regress into another giant fragile template.
+
+      Expected outcome:
+      - The rebuilt UI is easier to review and safer to change.
+      - Data loading and rendering are more local and predictable.
+      - The control-plane UI has enough docs and tests to avoid immediate
+        architectural backsliding.
+
+      Out of scope:
+      - redesigning unrelated product surfaces outside the control-plane admin UI
+    milestone: "Phase 3: Front-End Resilience and Ship Readiness"
+    status: "Todo"
+    labels: ["control-plane", "frontend", "refactor", "architecture"]
+    assignees: ["goblinsan"]

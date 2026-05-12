@@ -1,0 +1,155 @@
+project: "Gateway Chat Platform"
+repository: "goblinsan/gateway-chat-platform"
+
+metadata:
+  name: gateway-chat-platform-orchestrated-chat
+  title: "Gateway Chat Platform — Orchestrated Chat Integration"
+  created: "2026-04-23"
+  status: planned
+  summary: >
+    Evolve gateway-chat-platform into the stable public chat and persistence
+    layer for the gateway suite while delegating multi-step execution to the
+    internal agent-service for selected agents. Preserve the current UI-facing
+    chat contract, thread persistence, notes sync, inbox delivery, and user
+    quotas while adding an orchestrated execution mode.
+
+    This plan executes in the gateway-chat-platform repository only. Do not
+    assume direct edits in agent-service or llm-service, private control-plane
+    config, or live internal service addresses. Repository deliverables must
+    define the integration points and fallback behavior needed to work with the
+    internal orchestration layer.
+
+milestones:
+  - title: "Phase 1: Execution mode and internal orchestrator client"
+    due_on: ""
+    description: "Add agent execution modes and a client path for internal orchestrated runs."
+  - title: "Phase 2: Stream translation, persistence, and continuity"
+    due_on: ""
+    description: "Translate orchestration events into the existing chat SSE/UI contract while preserving persistence and notes sync."
+  - title: "Phase 3: Automation delegation and approval-aware UX"
+    due_on: ""
+    description: "Let automation-capable routes delegate to the orchestrator and surface approval/pause states cleanly."
+  - title: "Phase 4: Migration safety, tests, and operator docs"
+    due_on: ""
+    description: "Keep direct-provider paths working during migration and add end-to-end tests and integration docs."
+
+epics:
+  - title: "Execution-mode-aware agent routing"
+    body: >
+      The gateway should decide whether a request uses direct provider chat or
+      the internal agent-service. This must be an explicit agent/runtime
+      capability rather than an implicit routing guess so migration can be
+      gradual and low-risk.
+    milestone: "Phase 1: Execution mode and internal orchestrator client"
+    status: "Todo"
+    labels: ["chat-platform", "routing", "agents", "phase-1"]
+    assignees: ["goblinsan"]
+    children:
+      - title: "Add execution mode to agent configuration"
+        body: >
+          Extend the agent config model with an explicit execution mode such as
+          `direct_provider` or `orchestrated`. Preserve current behavior for
+          existing agents unless they are explicitly opted into orchestration.
+        labels: ["backend", "agents"]
+      - title: "Implement internal agent-service client"
+        body: >
+          Add a client module for calling the internal agent-service with stable
+          service authentication, timeouts, retries, and normalized request
+          payloads for chat-originated runs.
+        labels: ["backend", "integration"]
+      - title: "Route selected chat requests through the orchestrator"
+        body: >
+          Update the chat execution path so opted-in agents are executed through
+          agent-service while non-orchestrated agents continue using the current
+          provider-registry path.
+        labels: ["backend", "routing", "integration"]
+
+  - title: "Streaming translation and persistence continuity"
+    body: >
+      The chat UI should not need to understand the orchestrator's internal
+      event model. gateway-chat-platform should translate orchestrator events
+      into the existing SSE/UI contract and remain the owner of user-facing
+      thread/message persistence, usage logs, and notes sync.
+    milestone: "Phase 2: Stream translation, persistence, and continuity"
+    status: "Todo"
+    labels: ["chat-platform", "streaming", "storage", "phase-2"]
+    assignees: ["goblinsan"]
+    children:
+      - title: "Translate orchestrator events into chat SSE events"
+        body: >
+          Map internal agent-service events such as assistant deltas, tool
+          states, approvals, completion, and failure into the gateway's current
+          SSE stream contract so the UI remains stable during the backend
+          redesign.
+        labels: ["backend", "streaming"]
+      - title: "Preserve conversation persistence for orchestrated runs"
+        body: >
+          Ensure user messages, assistant messages, usage logs, and thread
+          metadata are still persisted by gateway-chat-platform even when the
+          actual execution work is delegated to agent-service.
+        labels: ["backend", "storage"]
+      - title: "Keep notes sync and message history coherent"
+        body: >
+          Maintain notes sync and thread history semantics for orchestrated
+          agents. Avoid splitting the source of truth for user-visible
+          conversation history between the gateway and agent-service.
+        labels: ["backend", "notes", "integration"]
+
+  - title: "Automation delegation and approval-aware operator/user flows"
+    body: >
+      gateway-chat-platform already supports automation-oriented runs and inbox
+      delivery. It should be able to delegate those runs to agent-service where
+      appropriate and surface approval-required or paused orchestration states
+      in ways that are understandable to operators and end users.
+    milestone: "Phase 3: Automation delegation and approval-aware UX"
+    status: "Todo"
+    labels: ["chat-platform", "automation", "approvals", "phase-3"]
+    assignees: ["goblinsan"]
+    children:
+      - title: "Allow automation routes to delegate to agent-service"
+        body: >
+          Extend the non-interactive run path so selected automation-style agent
+          runs can be delegated to agent-service using normalized workflow and
+          delivery metadata while preserving current delivery features.
+        labels: ["backend", "automation", "integration"]
+      - title: "Surface approval-required states cleanly"
+        body: >
+          When orchestrated runs pause for approval, present a clean status and
+          recovery path rather than generic failure messaging. Support operator
+          inspection and later UI enhancements for approval handling.
+        labels: ["backend", "approvals", "ux"]
+      - title: "Publish orchestrated delivery results to inbox/chat"
+        body: >
+          Ensure orchestrated automation runs can still publish results into the
+          gateway inbox/chat delivery surfaces with consistent metadata,
+          workflow attribution, and thread linking.
+        labels: ["backend", "delivery", "integration"]
+
+  - title: "Migration safety, testing, and operator-facing integration docs"
+    body: >
+      This migration should not break the working direct-provider chat path.
+      The repo needs test coverage and documentation that makes the internal
+      orchestration boundary explicit and safe to operate.
+    milestone: "Phase 4: Migration safety, tests, and operator docs"
+    status: "Todo"
+    labels: ["chat-platform", "testing", "ops", "phase-4"]
+    assignees: ["goblinsan"]
+    children:
+      - title: "Keep direct-provider execution path intact during rollout"
+        body: >
+          Preserve the existing provider-registry path for agents that are not
+          opted into orchestration so the system can migrate incrementally
+          rather than through a single high-risk cutover.
+        labels: ["backend", "routing"]
+      - title: "Add end-to-end tests for orchestrated chat runs"
+        body: >
+          Add test coverage for an orchestrated chat request, an orchestrated
+          streaming response, persistence/usage continuity, and failure handling
+          when the internal agent-service is unavailable or times out.
+        labels: ["testing", "integration"]
+      - title: "Document internal service config and auth requirements"
+        body: >
+          Document the environment variables, service auth assumptions, timeout
+          tuning, and fallback behavior required to integrate the gateway with
+          agent-service without hardcoding private topology in committed files.
+        labels: ["docs", "ops"]

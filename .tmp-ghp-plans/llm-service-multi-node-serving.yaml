@@ -1,0 +1,155 @@
+project: "LLM Service"
+repository: "goblinsan/llm-service"
+
+metadata:
+  name: llm-service-multi-node-serving
+  title: "LLM Service — Multi-Node Model Serving Contract"
+  created: "2026-04-23"
+  status: planned
+  summary: >
+    Narrow llm-service to a strong model-serving and model-management layer for
+    the gateway suite. The service should provide a stable OpenAI-compatible
+    inference contract, node health, model inventory, and operational guardrails
+    so agent-service can route requests across multiple llm-service nodes on
+    different machines.
+
+    This plan executes in the llm-service repository only. Do not assume direct
+    edits in agent-service or gateway-chat-platform, private gateway config, or
+    live model-node addresses. Repository deliverables must make the model-node
+    serving contract explicit and minimize orchestration-specific logic in this
+    repo over time.
+
+milestones:
+  - title: "Phase 1: Stable inference and node-health contract"
+    due_on: ""
+    description: "Harden OpenAI-compatible inference, streaming, model selection, and node readiness behavior."
+  - title: "Phase 2: Model inventory and backend capability reporting"
+    due_on: ""
+    description: "Expose enough model and node metadata for an orchestrator to make backend-selection decisions."
+  - title: "Phase 3: Operational guardrails and observability"
+    due_on: ""
+    description: "Improve auth, concurrency, timeouts, metrics, and admin model-management behavior."
+  - title: "Phase 4: Responsibility narrowing and deprecation of wrapper-owned orchestration"
+    due_on: ""
+    description: "Document and reduce orchestration/tooling behaviors that should move to agent-service."
+
+epics:
+  - title: "Stable OpenAI-compatible inference surface"
+    body: >
+      llm-service should be an excellent model-serving backend with predictable
+      behavior for completions, streaming, model listing, and error handling.
+      It should preserve requested model names and avoid wrapper behavior that
+      obscures how an upstream orchestrator selected a model.
+    milestone: "Phase 1: Stable inference and node-health contract"
+    status: "Todo"
+    labels: ["llm-service", "api", "models", "phase-1"]
+    assignees: ["goblinsan"]
+    children:
+      - title: "Preserve requested model names end to end"
+        body: >
+          Ensure chat/completions requests honor the caller's requested model
+          name consistently in both request handling and response payloads. This
+          is required so agent-service can route across multiple nodes and keep
+          accurate traces of which model was used.
+        labels: ["backend", "models"]
+      - title: "Harden streaming and error compatibility"
+        body: >
+          Validate and stabilize `/v1/chat/completions` streaming semantics,
+          error formats, and timeouts so upstream callers can treat llm-service
+          as a reliable OpenAI-compatible backend.
+        labels: ["backend", "streaming", "testing"]
+      - title: "Define health and readiness semantics for orchestration"
+        body: >
+          Make health behavior explicit for ready, loading, no-model, and error
+          states so agent-service can distinguish transient unavailability from
+          a permanently unusable node.
+        labels: ["backend", "ops"]
+
+  - title: "Model inventory and node capability contract"
+    body: >
+      agent-service needs to know what each llm-service node can do. The repo
+      should expose model inventory and useful node capability information
+      without turning llm-service into the system-wide orchestrator.
+    milestone: "Phase 2: Model inventory and backend capability reporting"
+    status: "Todo"
+    labels: ["llm-service", "inventory", "integration", "phase-2"]
+    assignees: ["goblinsan"]
+    children:
+      - title: "Expose available and loaded model inventory cleanly"
+        body: >
+          Harden the model inventory API so an upstream orchestrator can inspect
+          available models, the currently loaded model, and basic metadata such
+          as filename, quantization, and readiness without relying on
+          undocumented internals.
+        labels: ["backend", "models", "api"]
+      - title: "Advertise node capability metadata"
+        body: >
+          Expose useful node-level metadata for routing decisions such as
+          context limits, concurrency limits, and GPU/load-related diagnostics
+          in a structured and stable way. Keep this focused on serving
+          capability, not orchestration policy.
+        labels: ["backend", "integration", "ops"]
+      - title: "Document node registration contract for agent-service"
+        body: >
+          Add docs describing the service URLs, auth expectations, model
+          inventory semantics, and health endpoints that an upstream
+          agent-service should consume when building a multi-node backend pool.
+        labels: ["docs", "integration"]
+
+  - title: "Operational guardrails for shared model nodes"
+    body: >
+      When multiple services depend on llm-service nodes, predictable limits and
+      observability matter. The repo should expose enough guardrails and metrics
+      for safe operation without embedding higher-level orchestration behavior.
+    milestone: "Phase 3: Operational guardrails and observability"
+    status: "Todo"
+    labels: ["llm-service", "ops", "phase-3"]
+    assignees: ["goblinsan"]
+    children:
+      - title: "Strengthen admin auth around model operations"
+        body: >
+          Ensure model download, load, and unload operations are consistently
+          protected by admin auth and clearly separated from public inference
+          paths.
+        labels: ["backend", "security"]
+      - title: "Expose per-node serving metrics"
+        body: >
+          Add or document metrics for active requests, request latency,
+          timeouts, model transitions, and other signals an operator or
+          orchestrator might use to understand node health and capacity.
+        labels: ["backend", "observability"]
+      - title: "Document concurrency and timeout guardrails"
+        body: >
+          Make concurrency limits, timeout behavior, retry expectations, and
+          queue/busy semantics explicit so upstream systems can back off or
+          fail over safely.
+        labels: ["docs", "ops"]
+
+  - title: "Responsibility narrowing and deprecation of wrapper-owned tool orchestration"
+    body: >
+      Over time, general-purpose tool orchestration should live in agent-service
+      rather than llm-service. This repo should document that direction and
+      avoid expanding wrapper-owned orchestration behaviors.
+    milestone: "Phase 4: Responsibility narrowing and deprecation of wrapper-owned orchestration"
+    status: "Todo"
+    labels: ["llm-service", "tools", "docs", "phase-4"]
+    assignees: ["goblinsan"]
+    children:
+      - title: "Mark wrapper-owned gateway_tools behavior as transitional"
+        body: >
+          Document the current wrapper-specific tool path as transitional rather
+          than the long-term orchestration contract. Avoid expanding that path
+          as the main integration strategy for new features.
+        labels: ["docs", "tools"]
+      - title: "Define migration notes for agent-service-owned tool execution"
+        body: >
+          Add integration notes explaining how llm-service should behave when an
+          upstream orchestrator owns tool execution and only needs raw model
+          inference plus serving metadata from this service.
+        labels: ["docs", "integration"]
+      - title: "Add compatibility tests for orchestrator-facing use"
+        body: >
+          Add tests or documented validation steps covering multi-model requests,
+          health-state transitions, and orchestrator-compatible streaming/error
+          behavior so agent-service integration can rely on stable contracts.
+        labels: ["testing", "integration"]

@@ -1,0 +1,283 @@
+project: "Gateway Control Plane UI Overhaul"
+repository: "goblinsan/gateway-control-plane"
+
+metadata:
+  name: gateway-control-plane-ui-overhaul
+  title: "Gateway Control Plane UI Overhaul"
+  created: "2026-04-16"
+  status: planned
+  summary: >
+    Rework the gateway-control-plane admin UI so it is operations-first instead
+    of config-first. The landing experience should foreground system and service
+    health, long-running actions should feel observable and responsive, and the
+    monolithic admin-ui implementation should be refactored into page-level
+    modules with lazy loading and clearer rendering boundaries. The redesign
+    should use the operator-specified visual system: Passion One for main
+    headings, Karla for sub-headings, Fira Sans for body, and the
+    palette-2026-04-17 color system as the design token foundation.
+
+milestones:
+  - title: "Phase 1: Control Plane UI Overhaul"
+    due_on: ""
+    description: >
+      Deliver an operations-first IA, a health-first landing page, stronger
+      visual hierarchy, async action feedback, and a refactored admin UI shell
+      that is safer to extend.
+
+epics:
+  - title: "Rebuild the control-plane admin UI around operations-first navigation and a resilient front-end architecture"
+    body: >
+      The current control-plane UI is powerful but difficult to navigate. The
+      main friction is structural: the default landing state drops the operator
+      into config-heavy tabs, critical health information is buried, long-
+      running actions do not have a first-class execution console, and the
+      implementation is concentrated in a very large `admin-ui.ts` template that
+      makes small changes feel fragile. This epic should treat the UI as an
+      operator control surface, not just a configuration form.
+
+      The target experience is:
+      - landing page starts with system and service health
+      - navigation reflects the operator mental model:
+        Bootstrap, Nodes, Workloads, Monitor, Secrets
+      - long-running actions are visibly in-flight, cancellable or clearly
+        stateful, and produce a first-class action console
+      - lazy loading is preserved and strengthened so each page fetches only the
+        data it needs
+      - rendering is broken into page-level or domain-level modules so updates
+        are less brittle
+      - the visual system follows the specified fonts and palette rather than
+        generic admin defaults
+
+      The implementation should preserve the existing control-plane feature set
+      while improving discoverability, responsiveness, and maintainability.
+    milestone: "Phase 1: Control Plane UI Overhaul"
+    status: "Todo"
+    labels: ["control-plane", "frontend", "ux", "admin-ui"]
+    assignees: ["goblinsan"]
+    children:
+      - title: "01. Define the new admin UI information architecture and navigation model"
+        body: >
+          Replace the current top-tab-first mental model with an IA centered on
+          the operator workflow. The top-level navigation should reflect the
+          intended site map:
+          - Overview
+          - Bootstrap
+          - Nodes
+          - Workloads
+          - Monitor
+          - Secrets
+
+          Document which current sections move where, which pages get secondary
+          navigation, and which pages should default-open on first load.
+        labels: ["frontend", "ux", "architecture"]
+      - title: "02. Make Overview the default landing page and feature health first"
+        body: >
+          Add a new Overview landing page and make it the default initial route.
+          It should prominently surface:
+          - control-plane runtime summary
+          - gateway / nginx health
+          - service profile health summaries
+          - remote workload health summaries
+          - KULRS state
+          - recent failures or degraded systems
+          - quick operator actions
+
+          The goal is that an operator can answer “what is broken?” and “what
+          should I do next?” without navigating into deeper config tabs.
+        labels: ["frontend", "ux", "monitoring"]
+      - title: "03. Build a persistent shell with left navigation and clearer page framing"
+        body: >
+          Replace the current tab-heavy shell with a more stable app frame:
+          - persistent sidebar or equivalent navigation rail
+          - clearer page title / subtitle region
+          - dedicated utility actions region for refresh, save, and restart
+          - visual distinction between status surfaces and configuration forms
+
+          The shell should support desktop-first operations while still adapting
+          cleanly to smaller screens.
+        labels: ["frontend", "layout", "ux"]
+      - title: "04. Establish a visual design system using the supplied fonts and palette"
+        body: >
+          Introduce explicit design tokens and typography rules based on:
+          - main headings: Passion One
+          - sub-headings and navigational labels: Karla
+          - body: Fira Sans
+          - colors: palette-2026-04-17.csv
+
+          Avoid generic admin styling and make the UI feel intentional. Use the
+          token system to standardize backgrounds, status colors, spacing,
+          borders, and focus states so the new shell can be extended safely.
+        labels: ["frontend", "design-system", "branding"]
+      - title: "05. Add a first-class action console for long-running operations"
+        body: >
+          Introduce an operator-visible action console that can display the
+          progress and logs of long-running actions such as deploys, health
+          checks, node setup, remote service controls, imports, and syncs.
+
+          The console should be:
+          - always reachable from the main shell
+          - collapsible but not hidden away
+          - clearly associated with recent actions
+          - structured enough to show queued/running/success/error states
+          - able to render streamed or incremental output where available
+        labels: ["frontend", "ux", "operations"]
+      - title: "06. Standardize button busy states and operator feedback patterns"
+        body: >
+          Buttons that trigger async or destructive actions should provide
+          immediate visual acknowledgment. Standardize:
+          - disabled/busy state handling
+          - in-progress styling
+          - optimistic acknowledgement where safe
+          - success/error completion signals
+          - prevention of accidental double-triggering
+
+          This should be implemented as a shared UI behavior rather than ad hoc
+          per button.
+        labels: ["frontend", "ux", "interaction"]
+      - title: "07. Move long-running UI actions onto explicit async job models where possible"
+        body: >
+          Audit current control-plane UI actions that keep requests open or tie
+          UI responsiveness to a long synchronous response. Move appropriate
+          operations onto explicit async job models so the UI can poll or stream
+          status instead of blocking.
+
+          This should include clear criteria for which operations remain
+          synchronous and which become queued/backgrounded.
+        labels: ["frontend", "backend", "operations"]
+      - title: "08. Refactor admin-ui.ts into page and domain modules"
+        body: >
+          Break the current monolithic admin UI implementation into smaller
+          modules. At minimum, split:
+          - shell / layout
+          - overview
+          - bootstrap
+          - nodes
+          - workloads
+          - monitoring
+          - secrets
+          - action console
+
+          The goal is to reduce the fragility of edits caused by one giant HTML
+          template and one broad global render path.
+        labels: ["frontend", "refactor", "architecture"]
+      - title: "09. Replace global broad render passes with page-scoped renderers"
+        body: >
+          The current render model repaints too much and increases coupling
+          between unrelated features. Introduce page-scoped or section-scoped
+          renderers so state changes in one area do not require global redraws.
+
+          Preserve correctness while reducing DOM churn and lowering the risk of
+          brittle regressions.
+        labels: ["frontend", "performance", "refactor"]
+      - title: "10. Strengthen lazy loading so each page fetches only its required data"
+        body: >
+          Keep the current lazy-loading intent, but align it with the new page
+          structure. Each page should fetch only the data it needs, and loading
+          indicators should be local to the active surface rather than implied by
+          global state.
+
+          This includes clear stale-data rules and refresh behavior for:
+          - health snapshots
+          - runtime summaries
+          - remote service statuses
+          - KULRS status
+          - workflows and jobs
+          - provider state
+        labels: ["frontend", "performance", "data-loading"]
+      - title: "11. Rework bootstrap and gateway config pages around setup tasks"
+        body: >
+          The bootstrap surface should feel like system bring-up, not a raw form.
+          Reframe gateway/control-plane config into a task-oriented setup page
+          that makes the minimum required settings obvious and groups related
+          controls logically.
+
+          This should include clearer framing for:
+          - gateway host paths and reload commands
+          - control-plane bind settings
+          - prerequisites and dependencies
+        labels: ["frontend", "ux", "ops"]
+      - title: "12. Rework node setup into an obvious machine inventory and provisioning flow"
+        body: >
+          The Nodes area should prioritize:
+          - current node inventory
+          - setup/provisioning entry points
+          - node health and connectivity
+          - remote capability summaries
+
+          Reduce the sense that node setup is hidden behind secondary affordances
+          and make provisioning feel like a guided operator workflow.
+        labels: ["frontend", "ux", "nodes"]
+      - title: "13. Rework workloads into a single coherent operational surface"
+        body: >
+          The current workload-related UI is spread across apps, jobs, remote
+          workloads, workflows, profiles, and deploy surfaces. Reorganize these
+          into a clearer Workloads area that separates:
+          - deployed services
+          - managed apps
+          - scheduled jobs and workflows
+          - runtime profiles
+
+          The operator should not need to remember obscure tab paths to find a
+          service or its runtime controls.
+        labels: ["frontend", "ux", "workloads"]
+      - title: "14. Improve monitoring UX with clearer summaries, history, and escalation signals"
+        body: >
+          The monitoring area should better distinguish:
+          - overall system health
+          - degraded vs down state
+          - recent incidents
+          - target-specific history
+          - operator actions available from monitoring surfaces
+
+          Make monitoring feel like an operational dashboard rather than a
+          collection of raw cards.
+        labels: ["frontend", "monitoring", "ux"]
+      - title: "15. Isolate secrets management into a guarded, operator-focused page"
+        body: >
+          Secrets are currently mixed into broader runtime profile surfaces.
+          Move secrets management into a dedicated top-level page with strong
+          framing, clearer separation from non-secret config, and safer editing
+          patterns.
+
+          Preserve existing capability while reducing accidental confusion
+          between runtime wiring and credential editing.
+        labels: ["frontend", "security", "ux"]
+      - title: "16. Add responsive layout rules for laptop and narrow-width operator workflows"
+        body: >
+          The control-plane UI is desktop-oriented, but it still needs to remain
+          usable on narrower laptop windows and constrained viewports. Add
+          responsive behavior for the new shell, nav, action console, status
+          grids, and dense config sections without collapsing into a generic
+          mobile-card pile.
+        labels: ["frontend", "responsive", "layout"]
+      - title: "17. Audit accessibility, focus states, and keyboard navigation across the new shell"
+        body: >
+          The redesign should improve keyboard and assistive use, not just
+          visuals. Validate heading structure, focus visibility, button state
+          semantics, panel navigation, disclosure patterns, and status
+          communication for screen readers.
+        labels: ["frontend", "a11y", "ux"]
+      - title: "18. Add regression coverage for key admin UI flows"
+        body: >
+          Add targeted coverage for the highest-risk UI flows and supporting
+          logic introduced by the refactor. Focus on:
+          - navigation state
+          - page-specific lazy loading
+          - busy/disabled action states
+          - action console behavior
+          - Overview rendering
+          - existing critical config edit paths that must not regress
+        labels: ["frontend", "tests", "refactor"]
+      - title: "19. Document the new admin UI architecture and operator navigation model"
+        body: >
+          Update docs so future contributors understand:
+          - the new IA
+          - page boundaries
+          - rendering boundaries
+          - action console model
+          - lazy loading expectations
+          - design token and typography choices
+
+          This documentation should make future UI changes safer and reduce the
+          odds of the code drifting back toward a single fragile template.
+        labels: ["docs", "frontend", "architecture"]

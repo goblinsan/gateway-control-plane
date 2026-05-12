@@ -1,0 +1,180 @@
+project: "Agent Service"
+repository: "goblinsan/agent-service"
+
+metadata:
+  name: agent-service-orchestration-backend
+  title: "Agent Service — Internal Orchestration Backend"
+  created: "2026-04-23"
+  status: planned
+  summary: >
+    Redesign agent-service into the internal orchestration layer for the
+    gateway suite. It should serve both chat-originated requests from
+    gateway-chat-platform and non-chat automation callers such as Kulrs jobs.
+    The service must own multi-step execution, tool policy, approvals, MCP
+    integration, run traces, and multi-node llm-service backend selection.
+
+    This plan executes in the agent-service repository only. Do not assume
+    access to private gateway config, live LAN addresses, or direct edits in
+    gateway-chat-platform or llm-service. Repository deliverables must define
+    the internal API contracts and integration notes needed for follow-up work
+    in those repos.
+
+milestones:
+  - title: "Phase 1: Internal contracts and orchestration state model"
+    due_on: ""
+    description: "Define the internal chat and automation APIs, durable run state, and structured event model."
+  - title: "Phase 2: Execution runtime, tools, approvals, and MCP"
+    due_on: ""
+    description: "Implement the real orchestration loop with tool calls, policy checks, approval pauses, and MCP-backed execution."
+  - title: "Phase 3: Multi-node llm-service routing and automation callers"
+    due_on: ""
+    description: "Route runs across multiple llm-service nodes and support first-class non-chat callers such as Kulrs."
+  - title: "Phase 4: Hardening, observability, and operator readiness"
+    due_on: ""
+    description: "Add metrics, replayable traces, integration tests, and deployment-ready operational docs."
+
+epics:
+  - title: "Internal orchestration API and durable run model"
+    body: >
+      agent-service needs explicit internal APIs for chat and automation
+      callers. It should accept gateway-normalized chat requests and
+      automation/job requests without forcing all non-chat work through chat
+      semantics. The repository should define a clear run model with room for
+      tools, approvals, model selection, and resumable states.
+    milestone: "Phase 1: Internal contracts and orchestration state model"
+    status: "Todo"
+    labels: ["agent-service", "api", "orchestration", "phase-1"]
+    assignees: ["goblinsan"]
+    children:
+      - title: "Define internal chat orchestration endpoint"
+        body: >
+          Add an internal chat-oriented API contract that accepts normalized
+          gateway context such as requestId, threadId, userId, agentId,
+          messages, system prompt, tool policy, model preferences, and metadata.
+          Keep it internal-only and designed for gateway-chat-platform rather
+          than direct browser use.
+        labels: ["backend", "api"]
+      - title: "Define internal automation orchestration endpoint"
+        body: >
+          Add a separate internal API contract for non-chat callers such as
+          scheduled jobs, background workers, and Kulrs workflows. Include
+          fields for source, jobType, workflowId, prompt/context payloads,
+          model preferences, response mode, and metadata.
+        labels: ["backend", "api", "automation"]
+      - title: "Expand run storage for orchestration state"
+        body: >
+          Replace the minimal session/run/step storage model with durable run
+          records that can store tool calls, selected model backend, approval
+          records, paused states, and final assistant output. Do not make this
+          the primary user-facing chat history store; it should be an
+          orchestration/audit store.
+        labels: ["backend", "storage"]
+      - title: "Define structured event stream for runs"
+        body: >
+          Emit structured events for run lifecycle, model selection, tool calls,
+          approval requests, assistant deltas, completion, and failure. Ensure
+          the event model can be translated by gateway-chat-platform into its
+          existing SSE contract and can also be consumed by automation callers.
+        labels: ["backend", "streaming"]
+
+  - title: "Execution runtime with tools, policy, approvals, and MCP"
+    body: >
+      The current runtime path only performs plain model completion. Replace it
+      with a real orchestration loop that can parse tool calls, apply policy,
+      pause for approvals, resume runs, and execute tools via local/native/HTTP
+      runners and MCP integrations.
+    milestone: "Phase 2: Execution runtime, tools, approvals, and MCP"
+    status: "Todo"
+    labels: ["agent-service", "tools", "mcp", "phase-2"]
+    assignees: ["goblinsan"]
+    children:
+      - title: "Refactor run loop for tool-capable orchestration"
+        body: >
+          Rework the core execution loop so each step can inspect model output,
+          detect tool requests, execute them, feed results back into the model,
+          and terminate only when a final assistant response is ready.
+        labels: ["backend", "orchestration"]
+      - title: "Wire policy evaluation into every tool call"
+        body: >
+          Ensure each tool call passes through the policy engine. Support allow,
+          deny, and require-approval outcomes with clear reasons and stored
+          audit metadata.
+        labels: ["backend", "policy", "security"]
+      - title: "Implement approval pause and resume flow"
+        body: >
+          Persist approval requests durably, pause the run when approval is
+          required, and resume execution after approval or denial. Define clear
+          run states and event semantics for approval-required workflows.
+        labels: ["backend", "approvals"]
+      - title: "Instantiate MCP runner in production runtime"
+        body: >
+          Wire MCP configuration into the actual runtime path rather than only
+          logging that an MCP endpoint exists. Support tool execution through
+          MCP with request/response normalization and failure handling.
+        labels: ["backend", "mcp"]
+
+  - title: "Multi-node llm-service backend routing and automation clients"
+    body: >
+      agent-service should treat multiple llm-service instances as a shared
+      inference pool. It also needs a stable client model for internal jobs
+      such as Kulrs palette analysis so orchestration is not overfit to chat.
+    milestone: "Phase 3: Multi-node llm-service routing and automation callers"
+    status: "Todo"
+    labels: ["agent-service", "llm-service", "automation", "phase-3"]
+    assignees: ["goblinsan"]
+    children:
+      - title: "Add llm-service node registry and health checks"
+        body: >
+          Implement configuration and health checking for multiple llm-service
+          backends. Track node availability, supported models, and recent
+          failure state so model routing can make informed decisions.
+        labels: ["backend", "routing", "integration"]
+      - title: "Route runs by model and backend policy"
+        body: >
+          Select an llm-service node per run based on requested model, node
+          health, model availability, and fallback policy. Stop hardcoding
+          `model: local`; preserve the requested model name end to end.
+        labels: ["backend", "routing", "models"]
+      - title: "Add first-class Kulrs automation caller path"
+        body: >
+          Define and test a non-chat caller flow using a concrete automation
+          example such as Kulrs color palette or product-analysis jobs. The
+          example should prove that agent-service can accept domain payloads and
+          return structured orchestration results without gateway chat semantics.
+        labels: ["backend", "automation", "integration"]
+
+  - title: "Observability, replayability, and deployment readiness"
+    body: >
+      Before the service becomes a core internal backend, it needs strong
+      traces, metrics, and integration coverage. Operators should be able to
+      inspect what happened in a run and understand which model backend or tool
+      path was used.
+    milestone: "Phase 4: Hardening, observability, and operator readiness"
+    status: "Todo"
+    labels: ["agent-service", "ops", "testing", "phase-4"]
+    assignees: ["goblinsan"]
+    children:
+      - title: "Add run metrics and tracing identifiers"
+        body: >
+          Track run latency, tool call counts, approval wait time, backend
+          selection counts, and failures. Carry requestId, runId, threadId, and
+          workflowId through logs and metrics where applicable.
+        labels: ["backend", "observability"]
+      - title: "Add replay and inspection APIs for completed runs"
+        body: >
+          Provide operator-friendly access to stored run steps, tool calls, and
+          decisions so failures can be debugged without relying only on
+          streaming-time logs.
+        labels: ["backend", "api", "ops"]
+      - title: "Build integration test coverage with mocked llm-service and tools"
+        body: >
+          Add end-to-end integration tests covering a successful orchestrated
+          run, a tool call, an approval-required tool call, and a multi-node
+          backend selection/fallback case.
+        labels: ["testing", "integration"]
+      - title: "Document internal deploy and auth contract"
+        body: >
+          Document the expected internal deployment model, service-token or mTLS
+          auth assumptions, database requirements, and the contracts that
+          gateway-chat-platform and internal automation callers must follow.
+        labels: ["docs", "ops"]
