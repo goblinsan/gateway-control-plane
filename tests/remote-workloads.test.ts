@@ -341,6 +341,7 @@ test('buildArtifacts renders remote workload bundles for core nodes', async () =
   assert.match(minecraftCompose, /TEXTUREPACK_REQUIRED/);
   assert.match(minecraftUpdateScript, /send-command list/);
   assert.match(minecraftUpdateScript, /bootstrap-world\.sh/);
+  assert.match(minecraftUpdateScript, /up -d --force-recreate server/);
   assert.match(minecraftBootstrapScript, /gateway-main\.mcworld/);
   assert.match(minecraftBootstrapScript, /chmod -R a\+rwX/);
   assert.match(behaviorManifest, /11111111-1111-1111-1111-111111111111/);

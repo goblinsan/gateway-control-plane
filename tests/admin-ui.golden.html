@@ -2130,6 +2130,18 @@
               </div>
               <p class="section-note">Scheduled prompts use these defaults unless a workflow overrides its own inbox scope.</p>
             </div>
+            <div class="card card-quiet">
+              <p>Mobile Client Auth</p>
+              <div class="row">
+                <label>Mobile Shared Token
+                  <input id="gatewayChatMobileSharedToken" type="password" placeholder="long-random-secret" />
+                </label>
+                <label>Mobile Shared User Id
+                  <input id="gatewayChatMobileSharedUserId" placeholder="jamescoghlan" />
+                </label>
+              </div>
+              <p class="section-note">Writes <code>MOBILE_SHARED_TOKEN</code> and <code>MOBILE_SHARED_USER_ID</code> into the runtime <code>chat-api.env</code> file used by the deployed chat API.</p>
+            </div>
             <details class="card section-card">
               <summary>
                 <div class="section-summary-copy">
@@ -5143,6 +5155,8 @@
       document.getElementById('gatewayChatRedisUrl').value = getEnvironmentValue(profile.environment, 'REDIS_URL');
       document.getElementById('gatewayChatDefaultUserId').value = getEnvironmentValue(profile.environment, 'CHAT_DEFAULT_USER_ID', 'me');
       document.getElementById('gatewayChatDefaultChannelId').value = getEnvironmentValue(profile.environment, 'CHAT_DEFAULT_CHANNEL_ID', 'coach');
+      document.getElementById('gatewayChatMobileSharedToken').value = getEnvironmentValue(profile.environment, 'MOBILE_SHARED_TOKEN');
+      document.getElementById('gatewayChatMobileSharedUserId').value = getEnvironmentValue(profile.environment, 'MOBILE_SHARED_USER_ID');
       document.getElementById('gatewayChatTtsEnabled').checked = profile.tts.enabled;
       document.getElementById('gatewayChatTtsBaseUrl').value = profile.tts.baseUrl;
       document.getElementById('gatewayChatTtsDefaultVoice').value = profile.tts.defaultVoice;
@@ -9255,6 +9269,23 @@
           event.target.value.trim(),
           description,
           false
+        );
+        renderSecrets();
+        syncRawJson();
+      });
+    });
+    [
+      ['gatewayChatMobileSharedToken', 'MOBILE_SHARED_TOKEN', 'Shared bearer token accepted by native mobile clients when Cloudflare Access browser login cannot be used directly', true],
+      ['gatewayChatMobileSharedUserId', 'MOBILE_SHARED_USER_ID', 'Stable user id mapped to the shared mobile bearer token', false],
+    ].forEach(([id, key, description, secret]) => {
+      const element = document.getElementById(id);
+      element.addEventListener('input', (event) => {
+        upsertEnvironmentEntry(
+          state.config.serviceProfiles.gatewayChatPlatform.environment,
+          key,
+          event.target.value.trim(),
+          description,
+          secret
         );
         renderSecrets();
         syncRawJson();

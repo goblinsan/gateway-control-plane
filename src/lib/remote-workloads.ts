@@ -339,7 +339,7 @@ fi
 
 /bin/sh -lc ${JSON.stringify(`${composeCommand} pull server`)}
 /bin/sh -lc ${JSON.stringify(`${stackDir}/scripts/bootstrap-world.sh`)}
-/bin/sh -lc ${JSON.stringify(`${composeCommand} up -d server`)}
+/bin/sh -lc ${JSON.stringify(`${composeCommand} up -d --force-recreate server`)}
 AFTER_IMAGE_ID="$(/bin/sh -lc ${JSON.stringify(`${node.dockerCommand} inspect -f '{{.Image}}' ${containerName} 2>/dev/null || true`)})"
 AFTER_LOGS=""
 AFTER_VERSION=""
