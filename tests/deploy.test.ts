@@ -269,6 +269,53 @@ test('smokeTestWithRetry tolerates startup delays', async (t) => {
   }
 });
 
+test('smokeTestWithRetry can send auth headers for protected health endpoints', async (t) => {
+  let attempts = 0;
+  const server = createServer((request, response) => {
+    attempts += 1;
+    response.statusCode = request.headers.authorization === 'Bearer test-token' ? 200 : 401;
+    response.end(response.statusCode === 200 ? 'ok' : 'unauthorized');
+  });
+
+  const listenResult = await new Promise<'ok' | NodeJS.ErrnoException>((resolve) => {
+    server.listen(0, '127.0.0.1', () => resolve('ok'));
+    server.on('error', (error) => resolve(error));
+  });
+
+  if (listenResult !== 'ok') {
+    if (listenResult.code === 'EPERM') {
+      t.skip('sandbox does not allow binding a local test server');
+      return;
+    }
+    throw listenResult;
+  }
+
+  const address = server.address();
+  assert.ok(address && typeof address === 'object');
+
+  try {
+    await smokeTestWithRetry(
+      `http://127.0.0.1:${address.port}/api/health`,
+      200,
+      2,
+      10,
+      undefined,
+      { Authorization: 'Bearer test-token' }
+    );
+    assert.equal(attempts, 1);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+});
+
 test('parseRemoteContainerInspectOutput includes image metadata', () => {
   const status = parseRemoteContainerInspectOutput(
     'gateway-bedrock-server',

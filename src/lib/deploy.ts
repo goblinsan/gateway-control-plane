@@ -335,16 +335,24 @@ async function writeActiveUpstream(app: AppConfig, slot: Slot, context: CommandC
   await writeFile(app.upstreamConfPath, output, 'utf8');
 }
 
-function httpGet(url: string): Promise<number> {
+function httpGet(url: string, extraHeaders?: Record<string, string>): Promise<number> {
   return new Promise((resolve, reject) => {
     const requestImpl = url.startsWith('https://') ? httpsRequest : httpRequest;
-    const request = requestImpl(url, { method: 'GET', timeout: 5_000 }, (response) => {
-      const statusCode = response.statusCode ?? 0;
-      response.on('error', reject);
-      // Drain the response so the underlying socket can close cleanly.
-      response.resume();
-      response.on('end', () => resolve(statusCode));
-    });
+    const request = requestImpl(
+      url,
+      {
+        method: 'GET',
+        timeout: 5_000,
+        headers: extraHeaders
+      },
+      (response) => {
+        const statusCode = response.statusCode ?? 0;
+        response.on('error', reject);
+        // Drain the response so the underlying socket can close cleanly.
+        response.resume();
+        response.on('end', () => resolve(statusCode));
+      }
+    );
     request.on('error', reject);
     request.on('timeout', () => request.destroy(new Error(`Timed out: ${url}`)));
     request.end();
@@ -412,14 +420,15 @@ export async function smokeTestWithRetry(
   expectedStatus = 200,
   attempts = 10,
   delayMs = 2_000,
-  log?: (message: string) => void
+  log?: (message: string) => void,
+  extraHeaders?: Record<string, string>
 ): Promise<void> {
   let lastStatus = 0;
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      lastStatus = await httpGet(url);
+      lastStatus = await httpGet(url, extraHeaders);
       if (lastStatus === expectedStatus) {
         return;
       }
@@ -443,13 +452,26 @@ export async function smokeTestWithRetry(
   throw new Error(`Smoke test failed for ${url}: expected ${expectedStatus}, got ${lastStatus}`);
 }
 
-async function smokeTestSlot(app: AppConfig, slot: Slot, context: CommandContext): Promise<void> {
+function getAppSmokeTestHeaders(config: GatewayConfig, app: AppConfig): Record<string, string> | undefined {
+  if (!(config.serviceProfiles.gatewayChatPlatform.enabled && config.serviceProfiles.gatewayChatPlatform.appId === app.id)) {
+    return undefined;
+  }
+
+  const mobileSharedToken = config.serviceProfiles.gatewayChatPlatform.environment
+    .find((entry) => entry.key === 'MOBILE_SHARED_TOKEN')
+    ?.value?.trim();
+  return mobileSharedToken
+    ? { Authorization: `Bearer ${mobileSharedToken}` }
+    : undefined;
+}
+
+async function smokeTestSlot(config: GatewayConfig, app: AppConfig, slot: Slot, context: CommandContext): Promise<void> {
   const url = `http://127.0.0.1:${app.slots[slot].port}${app.healthPath}`;
   if (context.dryRun) {
     context.log(`[dry-run] smoke test ${url}`);
     return;
   }
-  await smokeTestWithRetry(url, 200, 10, 2_000, context.log);
+  await smokeTestWithRetry(url, 200, 10, 2_000, context.log, getAppSmokeTestHeaders(config, app));
 }
 
 function normalizeBaseUrl(url: string): string {
@@ -643,7 +665,7 @@ export async function deployApp(
   await buildSlot(app, target, slotDir, context);
   await installServiceProfileFiles(config, appId, context);
   await runShell(resolveAppCommandTokens(app, target, slotDir, app.slots[target].startCommand), slotDir, context);
-  await smokeTestSlot(app, target, context);
+  await smokeTestSlot(config, app, target, context);
   await syncServiceProfileRuntime(config, appId, context, `http://127.0.0.1:${app.slots[target].port}`);
   await writeActiveUpstream(app, target, context);
   await runShell(config.gateway.nginxReloadCommand, process.cwd(), context);
@@ -659,7 +681,7 @@ export async function rollbackApp(config: GatewayConfig, appId: string, context:
 
   await installServiceProfileFiles(config, appId, context);
   await runShell(resolveAppCommandTokens(app, target, slotDir, app.slots[target].startCommand), slotDir, context);
-  await smokeTestSlot(app, target, context);
+  await smokeTestSlot(config, app, target, context);
   await syncServiceProfileRuntime(config, appId, context, `http://127.0.0.1:${app.slots[target].port}`);
   await writeActiveUpstream(app, target, context);
   await runShell(config.gateway.nginxReloadCommand, process.cwd(), context);
