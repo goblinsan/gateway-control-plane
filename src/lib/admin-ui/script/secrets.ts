@@ -144,6 +144,10 @@ export const SECRETS_SCRIPT = `    function renderPiProxyProfile() {
       }
 
       runtime.channels.forEach((channel, index) => {
+        const botTokenValue = isRedactedSecretValue(channel.botToken || '') ? '' : (channel.botToken || '');
+        const botTokenPlaceholder = isRedactedSecretValue(channel.botToken || '') ? 'Stored; reveal values to inspect' : '';
+        const webhookUrlValue = isRedactedSecretValue(channel.webhookUrl || '') ? '' : (channel.webhookUrl || '');
+        const webhookUrlPlaceholder = isRedactedSecretValue(channel.webhookUrl || '') ? 'Stored; reveal values to inspect' : '';
         const element = document.createElement('div');
         element.className = 'card';
         element.innerHTML = \`
@@ -162,9 +166,9 @@ export const SECRETS_SCRIPT = `    function renderPiProxyProfile() {
             </label>
           </div>
           <div class="row">
-            <label>Telegram Bot Token<input type="password" data-field="botToken" value="\${channel.botToken || ''}" /></label>
+            <label>Telegram Bot Token<input type="password" data-field="botToken" value="\${botTokenValue}" placeholder="\${botTokenPlaceholder}" /></label>
             <label>Telegram Chat Id<input data-field="chatId" value="\${channel.chatId || ''}" /></label>
-            <label>Webhook URL<input type="password" data-field="webhookUrl" value="\${channel.webhookUrl || ''}" /></label>
+            <label>Webhook URL<input type="password" data-field="webhookUrl" value="\${webhookUrlValue}" placeholder="\${webhookUrlPlaceholder}" /></label>
           </div>
         \`;
 
@@ -205,8 +209,10 @@ export const SECRETS_SCRIPT = `    function renderPiProxyProfile() {
 
     function renderKulrsSecrets() {
       const kulrs = state.config.serviceProfiles.gatewayApi.kulrsActivity;
-      document.getElementById('kulrsFirebaseApiKeySecrets').value = kulrs.firebaseApiKey;
-      document.getElementById('kulrsUnsplashAccessKeySecrets').value = kulrs.unsplashAccessKey;
+      document.getElementById('kulrsFirebaseApiKeySecrets').value = isRedactedSecretValue(kulrs.firebaseApiKey) ? '' : kulrs.firebaseApiKey;
+      document.getElementById('kulrsFirebaseApiKeySecrets').placeholder = isRedactedSecretValue(kulrs.firebaseApiKey) ? 'Stored; reveal values to inspect' : '';
+      document.getElementById('kulrsUnsplashAccessKeySecrets').value = isRedactedSecretValue(kulrs.unsplashAccessKey) ? '' : kulrs.unsplashAccessKey;
+      document.getElementById('kulrsUnsplashAccessKeySecrets').placeholder = isRedactedSecretValue(kulrs.unsplashAccessKey) ? 'Stored; reveal values to inspect' : '';
 
       const container = document.getElementById('kulrsSecretBotsContainer');
       container.innerHTML = '';
@@ -216,6 +222,8 @@ export const SECRETS_SCRIPT = `    function renderPiProxyProfile() {
       }
 
       kulrs.bots.forEach((bot, index) => {
+        const passwordValue = isRedactedSecretValue(bot.password) ? '' : bot.password;
+        const passwordPlaceholder = isRedactedSecretValue(bot.password) ? 'Stored; reveal values to inspect' : '';
         const element = document.createElement('div');
         element.className = 'card';
         element.innerHTML = \`
@@ -226,7 +234,7 @@ export const SECRETS_SCRIPT = `    function renderPiProxyProfile() {
           <div class="row">
             <label>Bot Id<input data-field="id" value="\${bot.id}" /></label>
             <label>Email<input data-field="email" value="\${bot.email}" /></label>
-            <label>Password<input type="password" data-field="password" value="\${bot.password}" /></label>
+            <label>Password<input type="password" data-field="password" value="\${passwordValue}" placeholder="\${passwordPlaceholder}" /></label>
           </div>
           <label>Description<input data-field="description" value="\${bot.description || ''}" /></label>
         \`;

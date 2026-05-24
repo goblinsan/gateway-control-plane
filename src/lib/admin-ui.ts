@@ -48,6 +48,7 @@ import {
 import { DEFAULT_WORKFLOW_SEED_PATH, importWorkflowSeed, planWorkflowSeedImport, type WorkflowRecord } from './workflows.ts';
 import { buildCoachActivationPrompt, buildPersonalAssistantWorkflowSeeds, buildProjectTrackingUpserts, upsertManagedAssistantAgents, writePersonalAssistantPlanFile } from './personal-assistant.ts';
 import { renderAdminPage } from './admin-ui/index.ts';
+import { mergeRedactedConfigWithStoredSecrets, sanitizeGatewayConfigForClient } from './admin-config-redaction.ts';
 
 export interface AdminServerOptions {
   configPath: string;
@@ -1593,8 +1594,10 @@ export async function startAdminServer(options: AdminServerOptions): Promise<voi
 
 
       if (request.method === 'GET' && path === '/api/config') {
+        const url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
+        const includeSecrets = url.searchParams.get('includeSecrets') === '1';
         const config = await loadGatewayConfig(options.configPath);
-        sendJson(response, 200, config);
+        sendJson(response, 200, sanitizeGatewayConfigForClient(config, { includeSecrets }));
         return;
       }
 
@@ -2085,9 +2088,11 @@ export async function startAdminServer(options: AdminServerOptions): Promise<voi
       }
 
       if (request.method === 'POST' && path === '/api/config') {
+        const existingConfig = await loadGatewayConfig(options.configPath);
         const config = await loadRequestConfig(request);
-        await saveGatewayConfig(options.configPath, config);
-        sendJson(response, 200, { message: `Saved ${options.configPath}`, config });
+        const mergedConfig = mergeRedactedConfigWithStoredSecrets(config, existingConfig);
+        await saveGatewayConfig(options.configPath, mergedConfig);
+        sendJson(response, 200, { message: `Saved ${options.configPath}`, config: sanitizeGatewayConfigForClient(mergedConfig) });
         return;
       }
 

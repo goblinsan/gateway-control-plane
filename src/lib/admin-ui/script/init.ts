@@ -58,12 +58,17 @@ export const INIT_SCRIPT = `    // Keyboard nav across top-tab and sub-tab butto
 
     const secretsRevealToggle = document.getElementById('secretsRevealToggle');
     if (secretsRevealToggle) {
-      secretsRevealToggle.addEventListener('click', () => {
-        const revealed = document.body.classList.toggle('is-secrets-revealed');
-        secretsRevealToggle.setAttribute('aria-pressed', revealed ? 'true' : 'false');
-        secretsRevealToggle.textContent = revealed ? 'Hide values' : 'Reveal values';
-        applySecretsRevealState();
-        setStatus(revealed ? 'Secret values revealed' : 'Secret values masked', 'ok');
+      secretsRevealToggle.addEventListener('click', async () => {
+        const revealing = !document.body.classList.contains('is-secrets-revealed');
+        await withBusyButton(secretsRevealToggle, revealing ? 'Revealing…' : 'Masking…', async () => {
+          state.config = await requestJson('GET', revealing ? '/api/config?includeSecrets=1' : '/api/config');
+          const revealed = document.body.classList.toggle('is-secrets-revealed', revealing);
+          secretsRevealToggle.setAttribute('aria-pressed', revealed ? 'true' : 'false');
+          secretsRevealToggle.textContent = revealed ? 'Hide values' : 'Reveal values';
+          render();
+          applySecretsRevealState();
+          setStatus(revealed ? 'Secret values revealed' : 'Secret values masked', 'ok');
+        });
       });
     }
 

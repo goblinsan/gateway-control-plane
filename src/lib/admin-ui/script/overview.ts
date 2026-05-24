@@ -245,7 +245,7 @@ export const OVERVIEW_SCRIPT = `    // Default landing tab — kept in sync with
           <div class="row">
             <label>Deploy Revision<input data-control="deployRevision" placeholder="optional sha/tag" /></label>
           </div>
-          <label>Build Commands (one per line)<textarea data-field="buildCommands">\${app.buildCommands.join('\\n')}</textarea></label>
+          <label>Build Commands (one per line)<textarea data-field="buildCommands" placeholder="\${isRedactedBuildCommands(app.buildCommands) ? 'Stored; reveal values to inspect' : ''}">\${isRedactedBuildCommands(app.buildCommands) ? '' : app.buildCommands.join('\\n')}</textarea></label>
         \`;
 
         element.querySelector('[data-action="remove"]').addEventListener('click', () => {

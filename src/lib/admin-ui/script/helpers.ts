@@ -5,12 +5,23 @@
 
 export const HELPERS_SCRIPT = `    state.remoteDeployJobIds = loadStoredRemoteDeployJobIds();
 
+    const REDACTED_SECRET_VALUE = '__REDACTED_SECRET__';
+    const REDACTED_BUILD_COMMANDS_VALUE = '__REDACTED_BUILD_COMMANDS__';
+
     const STALE_MS = 30000;
     function isStale(key) {
       return !state.dataLoaded[key] || (Date.now() - state.dataLoaded[key] > STALE_MS);
     }
     function markLoaded(key) {
       state.dataLoaded[key] = Date.now();
+    }
+
+    function isRedactedSecretValue(value) {
+      return value === REDACTED_SECRET_VALUE;
+    }
+
+    function isRedactedBuildCommands(value) {
+      return Array.isArray(value) && value.length === 1 && value[0] === REDACTED_BUILD_COMMANDS_VALUE;
     }
 
     function normalizeClientBasePath(pathValue) {

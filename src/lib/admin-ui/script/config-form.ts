@@ -120,6 +120,8 @@ export const CONFIG_FORM_SCRIPT = `    function updateGatewayField(key, value) {
       }
 
       secrets.forEach(({ entry, index }) => {
+        const value = isRedactedSecretValue(entry.value) ? '' : entry.value;
+        const placeholder = isRedactedSecretValue(entry.value) ? 'Stored; reveal values to inspect' : '';
         const element = document.createElement('div');
         element.className = 'card';
         element.innerHTML = \`
@@ -129,7 +131,7 @@ export const CONFIG_FORM_SCRIPT = `    function updateGatewayField(key, value) {
           </div>
           <div class="row">
             <label>Key<input data-field="key" value="\${entry.key}" /></label>
-            <label>Value<input type="password" data-field="value" value="\${entry.value}" /></label>
+            <label>Value<input type="password" data-field="value" value="\${value}" placeholder="\${placeholder}" /></label>
             <label class="check"><input type="checkbox" data-field="secret" \${entry.secret ? 'checked' : ''} /> Secret</label>
           </div>
           <label>Description<input data-field="description" value="\${entry.description || ''}" /></label>

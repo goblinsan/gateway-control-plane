@@ -2880,12 +2880,23 @@
 
     state.remoteDeployJobIds = loadStoredRemoteDeployJobIds();
 
+    const REDACTED_SECRET_VALUE = '__REDACTED_SECRET__';
+    const REDACTED_BUILD_COMMANDS_VALUE = '__REDACTED_BUILD_COMMANDS__';
+
     const STALE_MS = 30000;
     function isStale(key) {
       return !state.dataLoaded[key] || (Date.now() - state.dataLoaded[key] > STALE_MS);
     }
     function markLoaded(key) {
       state.dataLoaded[key] = Date.now();
+    }
+
+    function isRedactedSecretValue(value) {
+      return value === REDACTED_SECRET_VALUE;
+    }
+
+    function isRedactedBuildCommands(value) {
+      return Array.isArray(value) && value.length === 1 && value[0] === REDACTED_BUILD_COMMANDS_VALUE;
     }
 
     function normalizeClientBasePath(pathValue) {
@@ -3407,6 +3418,8 @@
       }
 
       secrets.forEach(({ entry, index }) => {
+        const value = isRedactedSecretValue(entry.value) ? '' : entry.value;
+        const placeholder = isRedactedSecretValue(entry.value) ? 'Stored; reveal values to inspect' : '';
         const element = document.createElement('div');
         element.className = 'card';
         element.innerHTML = `
@@ -3416,7 +3429,7 @@
           </div>
           <div class="row">
             <label>Key<input data-field="key" value="${entry.key}" /></label>
-            <label>Value<input type="password" data-field="value" value="${entry.value}" /></label>
+            <label>Value<input type="password" data-field="value" value="${value}" placeholder="${placeholder}" /></label>
             <label class="check"><input type="checkbox" data-field="secret" ${entry.secret ? 'checked' : ''} /> Secret</label>
           </div>
           <label>Description<input data-field="description" value="${entry.description || ''}" /></label>
@@ -5155,7 +5168,9 @@
       document.getElementById('gatewayChatRedisUrl').value = getEnvironmentValue(profile.environment, 'REDIS_URL');
       document.getElementById('gatewayChatDefaultUserId').value = getEnvironmentValue(profile.environment, 'CHAT_DEFAULT_USER_ID', 'me');
       document.getElementById('gatewayChatDefaultChannelId').value = getEnvironmentValue(profile.environment, 'CHAT_DEFAULT_CHANNEL_ID', 'coach');
-      document.getElementById('gatewayChatMobileSharedToken').value = getEnvironmentValue(profile.environment, 'MOBILE_SHARED_TOKEN');
+      const mobileSharedToken = getEnvironmentValue(profile.environment, 'MOBILE_SHARED_TOKEN');
+      document.getElementById('gatewayChatMobileSharedToken').value = isRedactedSecretValue(mobileSharedToken) ? '' : mobileSharedToken;
+      document.getElementById('gatewayChatMobileSharedToken').placeholder = isRedactedSecretValue(mobileSharedToken) ? 'Stored; reveal values to inspect' : '';
       document.getElementById('gatewayChatMobileSharedUserId').value = getEnvironmentValue(profile.environment, 'MOBILE_SHARED_USER_ID');
       document.getElementById('gatewayChatTtsEnabled').checked = profile.tts.enabled;
       document.getElementById('gatewayChatTtsBaseUrl').value = profile.tts.baseUrl;
@@ -5746,7 +5761,8 @@
       document.getElementById('monPgPort').value = String(mon.postgres.port);
       document.getElementById('monPgDatabase').value = mon.postgres.database;
       document.getElementById('monPgUser').value = mon.postgres.user;
-      document.getElementById('monPgPassword').value = mon.postgres.password;
+      document.getElementById('monPgPassword').value = isRedactedSecretValue(mon.postgres.password) ? '' : mon.postgres.password;
+      document.getElementById('monPgPassword').placeholder = isRedactedSecretValue(mon.postgres.password) ? 'Stored; reveal values to inspect' : '';
       document.getElementById('monRedisHost').value = mon.redis.host;
       document.getElementById('monRedisPort').value = String(mon.redis.port);
       document.getElementById('monHealthInterval').value = String(mon.healthCheckIntervalSeconds);
@@ -6239,7 +6255,7 @@
           <div class="row">
             <label>Deploy Revision<input data-control="deployRevision" placeholder="optional sha/tag" /></label>
           </div>
-          <label>Build Commands (one per line)<textarea data-field="buildCommands">${app.buildCommands.join('\n')}</textarea></label>
+          <label>Build Commands (one per line)<textarea data-field="buildCommands" placeholder="${isRedactedBuildCommands(app.buildCommands) ? 'Stored; reveal values to inspect' : ''}">${isRedactedBuildCommands(app.buildCommands) ? '' : app.buildCommands.join('\n')}</textarea></label>
         `;
 
         element.querySelector('[data-action="remove"]').addEventListener('click', () => {
@@ -6509,6 +6525,10 @@
       }
 
       runtime.channels.forEach((channel, index) => {
+        const botTokenValue = isRedactedSecretValue(channel.botToken || '') ? '' : (channel.botToken || '');
+        const botTokenPlaceholder = isRedactedSecretValue(channel.botToken || '') ? 'Stored; reveal values to inspect' : '';
+        const webhookUrlValue = isRedactedSecretValue(channel.webhookUrl || '') ? '' : (channel.webhookUrl || '');
+        const webhookUrlPlaceholder = isRedactedSecretValue(channel.webhookUrl || '') ? 'Stored; reveal values to inspect' : '';
         const element = document.createElement('div');
         element.className = 'card';
         element.innerHTML = `
@@ -6527,9 +6547,9 @@
             </label>
           </div>
           <div class="row">
-            <label>Telegram Bot Token<input type="password" data-field="botToken" value="${channel.botToken || ''}" /></label>
+            <label>Telegram Bot Token<input type="password" data-field="botToken" value="${botTokenValue}" placeholder="${botTokenPlaceholder}" /></label>
             <label>Telegram Chat Id<input data-field="chatId" value="${channel.chatId || ''}" /></label>
-            <label>Webhook URL<input type="password" data-field="webhookUrl" value="${channel.webhookUrl || ''}" /></label>
+            <label>Webhook URL<input type="password" data-field="webhookUrl" value="${webhookUrlValue}" placeholder="${webhookUrlPlaceholder}" /></label>
           </div>
         `;
 
@@ -6570,8 +6590,10 @@
 
     function renderKulrsSecrets() {
       const kulrs = state.config.serviceProfiles.gatewayApi.kulrsActivity;
-      document.getElementById('kulrsFirebaseApiKeySecrets').value = kulrs.firebaseApiKey;
-      document.getElementById('kulrsUnsplashAccessKeySecrets').value = kulrs.unsplashAccessKey;
+      document.getElementById('kulrsFirebaseApiKeySecrets').value = isRedactedSecretValue(kulrs.firebaseApiKey) ? '' : kulrs.firebaseApiKey;
+      document.getElementById('kulrsFirebaseApiKeySecrets').placeholder = isRedactedSecretValue(kulrs.firebaseApiKey) ? 'Stored; reveal values to inspect' : '';
+      document.getElementById('kulrsUnsplashAccessKeySecrets').value = isRedactedSecretValue(kulrs.unsplashAccessKey) ? '' : kulrs.unsplashAccessKey;
+      document.getElementById('kulrsUnsplashAccessKeySecrets').placeholder = isRedactedSecretValue(kulrs.unsplashAccessKey) ? 'Stored; reveal values to inspect' : '';
 
       const container = document.getElementById('kulrsSecretBotsContainer');
       container.innerHTML = '';
@@ -6581,6 +6603,8 @@
       }
 
       kulrs.bots.forEach((bot, index) => {
+        const passwordValue = isRedactedSecretValue(bot.password) ? '' : bot.password;
+        const passwordPlaceholder = isRedactedSecretValue(bot.password) ? 'Stored; reveal values to inspect' : '';
         const element = document.createElement('div');
         element.className = 'card';
         element.innerHTML = `
@@ -6591,7 +6615,7 @@
           <div class="row">
             <label>Bot Id<input data-field="id" value="${bot.id}" /></label>
             <label>Email<input data-field="email" value="${bot.email}" /></label>
-            <label>Password<input type="password" data-field="password" value="${bot.password}" /></label>
+            <label>Password<input type="password" data-field="password" value="${passwordValue}" placeholder="${passwordPlaceholder}" /></label>
           </div>
           <label>Description<input data-field="description" value="${bot.description || ''}" /></label>
         `;
@@ -9127,12 +9151,17 @@
 
     const secretsRevealToggle = document.getElementById('secretsRevealToggle');
     if (secretsRevealToggle) {
-      secretsRevealToggle.addEventListener('click', () => {
-        const revealed = document.body.classList.toggle('is-secrets-revealed');
-        secretsRevealToggle.setAttribute('aria-pressed', revealed ? 'true' : 'false');
-        secretsRevealToggle.textContent = revealed ? 'Hide values' : 'Reveal values';
-        applySecretsRevealState();
-        setStatus(revealed ? 'Secret values revealed' : 'Secret values masked', 'ok');
+      secretsRevealToggle.addEventListener('click', async () => {
+        const revealing = !document.body.classList.contains('is-secrets-revealed');
+        await withBusyButton(secretsRevealToggle, revealing ? 'Revealing…' : 'Masking…', async () => {
+          state.config = await requestJson('GET', revealing ? '/api/config?includeSecrets=1' : '/api/config');
+          const revealed = document.body.classList.toggle('is-secrets-revealed', revealing);
+          secretsRevealToggle.setAttribute('aria-pressed', revealed ? 'true' : 'false');
+          secretsRevealToggle.textContent = revealed ? 'Hide values' : 'Reveal values';
+          render();
+          applySecretsRevealState();
+          setStatus(revealed ? 'Secret values revealed' : 'Secret values masked', 'ok');
+        });
       });
     }
 
