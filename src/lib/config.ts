@@ -423,10 +423,18 @@ export interface PiProxyServiceProfile {
   serviceGroup?: string;
 }
 
+export interface AgentServiceProfile {
+  enabled: boolean;
+  description: string;
+  apiBaseUrl: string;
+  apiKey: string;
+}
+
 export interface ServiceProfiles {
   gatewayApi: GatewayApiServiceProfile;
   gatewayChatPlatform: GatewayChatPlatformServiceProfile;
   piProxy: PiProxyServiceProfile;
+  agentService: AgentServiceProfile;
 }
 
 export interface MonitoringConfig {
@@ -1494,6 +1502,28 @@ function parsePiProxyServiceProfile(value: unknown): PiProxyServiceProfile {
   };
 }
 
+function parseAgentServiceProfile(value: unknown): AgentServiceProfile {
+  if (value === undefined) {
+    return {
+      enabled: false,
+      description: 'agent-service HTTP API (chat/automation routing admin)',
+      apiBaseUrl: 'http://127.0.0.1:8080',
+      apiKey: ''
+    };
+  }
+  if (!isRecord(value)) {
+    throw new Error('Expected object for serviceProfiles.agentService');
+  }
+  return {
+    enabled: typeof value.enabled === 'boolean' ? value.enabled : false,
+    description: typeof value.description === 'string'
+      ? value.description
+      : 'agent-service HTTP API (chat/automation routing admin)',
+    apiBaseUrl: assertString(value.apiBaseUrl, 'serviceProfiles.agentService.apiBaseUrl'),
+    apiKey: typeof value.apiKey === 'string' ? value.apiKey : ''
+  };
+}
+
 function parseAdminUiSettings(value: unknown): AdminUiSettings {
   if (value === undefined) {
     return {
@@ -1624,7 +1654,8 @@ export function parseGatewayConfig(raw: unknown): GatewayConfig {
   const serviceProfiles: ServiceProfiles = {
     gatewayApi: parseGatewayApiServiceProfile(serviceProfilesRaw.gatewayApi),
     gatewayChatPlatform: parseGatewayChatPlatformServiceProfile(serviceProfilesRaw.gatewayChatPlatform),
-    piProxy: parsePiProxyServiceProfile(serviceProfilesRaw.piProxy)
+    piProxy: parsePiProxyServiceProfile(serviceProfilesRaw.piProxy),
+    agentService: parseAgentServiceProfile(serviceProfilesRaw.agentService)
   };
   const personalAssistant = parsePersonalAssistantConfig(raw.personalAssistant);
 

@@ -380,6 +380,34 @@ export const ADMIN_MARKUP: string = `<body>
           <div id="gatewayChatAgentsContainer" class="section-list"></div>
         </div>
       </details>
+      <details class="card section-card" open>
+        <summary>
+          <div class="section-summary-copy">
+            <span class="pill">Routing</span>
+            <h3>LLM Routing</h3>
+            <p>Choose which <code>agent-service</code> backend node serves chat and automation requests. Selections persist in postgres and survive restarts.</p>
+          </div>
+        </summary>
+        <div class="section-body">
+          <div class="split-actions">
+            <div>
+              <p class="section-note" id="llmRoutingStatus">Loading current routing…</p>
+            </div>
+            <div class="toolbar">
+              <button id="llmRoutingRefreshButton">Refresh</button>
+            </div>
+          </div>
+          <div class="row">
+            <label>Chat node
+              <select id="llmRoutingChatNode" disabled><option value="">(loading…)</option></select>
+            </label>
+            <label>Automation node
+              <select id="llmRoutingAutomationNode" disabled><option value="">(loading…)</option></select>
+            </label>
+          </div>
+          <div id="llmRoutingNodesContainer" class="section-list"></div>
+        </div>
+      </details>
       <details class="card section-card">
         <summary>
           <div class="section-summary-copy">

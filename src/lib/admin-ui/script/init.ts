@@ -2094,6 +2094,74 @@ export const INIT_SCRIPT = `    // Keyboard nav across top-tab and sub-tab butto
         setStatus(error.message, 'error');
       }
     });
+
+    async function renderLlmRouting() {
+      const statusEl = document.getElementById('llmRoutingStatus');
+      const chatSelect = document.getElementById('llmRoutingChatNode');
+      const autoSelect = document.getElementById('llmRoutingAutomationNode');
+      const nodesContainer = document.getElementById('llmRoutingNodesContainer');
+      if (!statusEl || !chatSelect || !autoSelect || !nodesContainer) return;
+      statusEl.textContent = 'Loading current routing…';
+      chatSelect.disabled = true;
+      autoSelect.disabled = true;
+      try {
+        const data = await requestJson('GET', '/api/agent-service/routing');
+        const nodes = Array.isArray(data && data.nodes) ? data.nodes : [];
+        const chatNode = (data && data.chat_node) || '';
+        const automationNode = (data && data.automation_node) || '';
+        const optionsHtml = ['<option value="">(none / default)</option>']
+          .concat(nodes.map((n) => \`<option value="\${n.name}">\${n.name}\${n.healthy ? '' : ' (unhealthy)'}</option>\`))
+          .join('');
+        chatSelect.innerHTML = optionsHtml;
+        autoSelect.innerHTML = optionsHtml;
+        chatSelect.value = chatNode;
+        autoSelect.value = automationNode;
+        chatSelect.disabled = false;
+        autoSelect.disabled = false;
+        nodesContainer.innerHTML = nodes.map((n) => {
+          const model = Array.isArray(n.models) && n.models.length > 0 ? n.models[0] : '(no model loaded)';
+          const healthy = n.healthy ? '<span class="pill">healthy</span>' : '<span class="pill warning">unhealthy</span>';
+          return \`<div class="card"><div class="split-actions"><div><strong>\${n.name}</strong> \${healthy}<br /><code>\${n.url}</code></div><div>\${n.active_requests}/\${n.max_concurrent_requests} in-flight</div></div><div>model: <code>\${model}</code></div></div>\`;
+        }).join('');
+        statusEl.textContent = \`chat → \${chatNode || '(default)'}, automation → \${automationNode || '(default)'}\`;
+      } catch (error) {
+        statusEl.textContent = 'Failed to load routing: ' + error.message;
+        chatSelect.innerHTML = '<option value="">(error)</option>';
+        autoSelect.innerHTML = '<option value="">(error)</option>';
+      }
+    }
+
+    async function updateLlmRouting(field, value) {
+      const body = {};
+      body[field] = value;
+      try {
+        await requestJson('PUT', '/api/agent-service/routing', body);
+        setStatus(\`Updated \${field} → \${value || '(default)'}\`);
+        await renderLlmRouting();
+      } catch (error) {
+        setStatus('Routing update failed: ' + error.message, 'error');
+        await renderLlmRouting();
+      }
+    }
+
+    const llmRoutingRefreshButton = document.getElementById('llmRoutingRefreshButton');
+    if (llmRoutingRefreshButton) {
+      llmRoutingRefreshButton.addEventListener('click', () => { renderLlmRouting(); });
+    }
+    const llmRoutingChatSelect = document.getElementById('llmRoutingChatNode');
+    if (llmRoutingChatSelect) {
+      llmRoutingChatSelect.addEventListener('change', (event) => {
+        updateLlmRouting('chat_node', event.target.value);
+      });
+    }
+    const llmRoutingAutoSelect = document.getElementById('llmRoutingAutomationNode');
+    if (llmRoutingAutoSelect) {
+      llmRoutingAutoSelect.addEventListener('change', (event) => {
+        updateLlmRouting('automation_node', event.target.value);
+      });
+    }
+    renderLlmRouting().catch(() => undefined);
+
     document.getElementById('checkTtsButton').addEventListener('click', async () => {
       try {
         state.ttsStatus = await requestJson('GET', '/api/tts/status');

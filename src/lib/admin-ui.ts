@@ -1044,6 +1044,25 @@ async function proxyChatPlatformRequest(
   return requestJsonUrl(`${chatPlatformBaseUrl}${path}`, method, body, undefined, timeoutMs);
 }
 
+async function proxyAgentServiceRequest(
+  config: GatewayConfig,
+  path: string,
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  body?: unknown,
+  timeoutMs?: number
+): Promise<{ status: number; payload: unknown }> {
+  const profile = config.serviceProfiles.agentService;
+  if (!profile.enabled) {
+    throw new Error('agentService service profile is disabled');
+  }
+  const baseUrl = normalizeBaseUrl(profile.apiBaseUrl);
+  const headers: Record<string, string> = {};
+  if (profile.apiKey) {
+    headers['X-API-Key'] = profile.apiKey;
+  }
+  return requestJsonUrl(`${baseUrl}${path}`, method, body, headers, timeoutMs);
+}
+
 async function runLocalCapture(command: string, timeoutMs = 5000): Promise<{ stdout: string; stderr: string; code: number }> {
   const { spawn } = await import('node:child_process');
   return new Promise((resolve) => {
@@ -1698,6 +1717,22 @@ export async function startAdminServer(options: AdminServerOptions): Promise<voi
         const config = await loadGatewayConfig(options.configPath);
         const providers = await listChatProviders(config);
         sendJson(response, 200, { providers });
+        return;
+      }
+
+      if (request.method === 'GET' && path === '/api/agent-service/routing') {
+        const config = await loadGatewayConfig(options.configPath);
+        const result = await proxyAgentServiceRequest(config, '/admin/routing', 'GET');
+        sendJson(response, result.status, result.payload);
+        return;
+      }
+
+      if (request.method === 'PUT' && path === '/api/agent-service/routing') {
+        const config = await loadGatewayConfig(options.configPath);
+        const rawBody = await readBody(request);
+        const body = rawBody.trim().length > 0 ? JSON.parse(rawBody) : {};
+        const result = await proxyAgentServiceRequest(config, '/admin/routing', 'PUT', body);
+        sendJson(response, result.status, result.payload);
         return;
       }
 

@@ -511,6 +511,12 @@
       "registryPath": "/api/minecraft/server-registry",
       "pollIntervalSeconds": 30,
       "serviceUser": "deploy"
+    },
+    "agentService": {
+      "enabled": false,
+      "description": "agent-service HTTP API used for chat/automation routing administration",
+      "apiBaseUrl": "http://198.51.100.111:8080",
+      "apiKey": ""
     }
   },
   "monitoring": {
