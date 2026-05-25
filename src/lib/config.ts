@@ -445,6 +445,14 @@ export interface GatewayConfig {
   serviceProfiles: ServiceProfiles;
   personalAssistant: PersonalAssistantConfig;
   monitoring?: MonitoringConfig;
+  reconciler?: ReconcilerConfig;
+}
+
+export interface ReconcilerConfig {
+  enabled: boolean;
+  intervalSeconds: number;
+  autoDeploy: boolean;
+  minRedeployIntervalSeconds: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1535,6 +1543,20 @@ function parseMonitoringConfig(raw: unknown): MonitoringConfig | undefined {
   };
 }
 
+function parseReconcilerConfig(raw: unknown): ReconcilerConfig | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isRecord(raw)) throw new Error('reconciler must be an object');
+  const enabled = typeof raw.enabled === 'boolean' ? raw.enabled : true;
+  const intervalSeconds = typeof raw.intervalSeconds === 'number' && raw.intervalSeconds > 0
+    ? Math.floor(raw.intervalSeconds)
+    : 900;
+  const autoDeploy = typeof raw.autoDeploy === 'boolean' ? raw.autoDeploy : true;
+  const minRedeployIntervalSeconds = typeof raw.minRedeployIntervalSeconds === 'number' && raw.minRedeployIntervalSeconds > 0
+    ? Math.floor(raw.minRedeployIntervalSeconds)
+    : 300;
+  return { enabled, intervalSeconds, autoDeploy, minRedeployIntervalSeconds };
+}
+
 export function parseGatewayConfig(raw: unknown): GatewayConfig {
   if (!isRecord(raw)) {
     throw new Error('Gateway config must be an object');
@@ -1625,8 +1647,9 @@ export function parseGatewayConfig(raw: unknown): GatewayConfig {
   }
 
   const monitoring = parseMonitoringConfig(raw.monitoring);
+  const reconciler = parseReconcilerConfig(raw.reconciler);
 
-  return { gateway, apps, scheduledJobs, workerNodes, remoteWorkloads, features, serviceProfiles, personalAssistant, monitoring };
+  return { gateway, apps, scheduledJobs, workerNodes, remoteWorkloads, features, serviceProfiles, personalAssistant, monitoring, reconciler };
 }
 
 export async function loadGatewayConfig(configPath: string): Promise<GatewayConfig> {

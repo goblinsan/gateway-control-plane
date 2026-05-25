@@ -17,12 +17,14 @@ import {
   getPiProxyServiceStatus,
   readCurrentSlot,
   restartPiProxyService,
+  runRemoteShellCaptureExternal,
   runServiceProfileAgent,
   syncServiceProfileRuntime,
   type AgentRunPayload,
   type AgentRunResult,
   type NodeSetupRequest
 } from './deploy.ts';
+import { ServiceReconciler } from './reconciler.ts';
 import {
   createEmptyProjectTrackingOverview,
   initMetrics,
@@ -1464,6 +1466,7 @@ export async function startAdminServer(options: AdminServerOptions): Promise<voi
   const startedAtMs = Date.now();
   const htmlCache = new Map<string, string>();
   const minecraftUpdateScheduler = await loadMinecraftManualUpdateScheduler(options.configPath, options.buildOutDir);
+  const initialConfig = await loadGatewayConfig(options.configPath);
   const remoteDeployJobs = new Map<string, RemoteDeployJobRecord>();
   const latestRemoteDeployJobByWorkload = new Map<string, string>();
   const REMOTE_DEPLOY_JOB_TTL_MS = 6 * 60 * 60 * 1000;
@@ -1557,6 +1560,21 @@ export async function startAdminServer(options: AdminServerOptions): Promise<voi
     return record;
   };
 
+  const reconciler = new ServiceReconciler({
+    getConfig: () => loadGatewayConfig(options.configPath),
+    sshExec: (node, command, timeoutMs) => runRemoteShellCaptureExternal(node, command, timeoutMs),
+    deployFn: (workloadId, revision) => {
+      const record = startRemoteDeployJob(workloadId, revision);
+      return { jobId: record.jobId };
+    },
+    log: (msg) => console.log('[reconciler]', msg),
+    enabled: initialConfig.reconciler?.enabled ?? true,
+    intervalSeconds: initialConfig.reconciler?.intervalSeconds,
+    autoDeploy: initialConfig.reconciler?.autoDeploy,
+    minRedeployIntervalSeconds: initialConfig.reconciler?.minRedeployIntervalSeconds
+  });
+  reconciler.start();
+
   const server = createServer(async (request, response) => {
     try {
       const path = getRequestPath(request);
@@ -1604,6 +1622,18 @@ export async function startAdminServer(options: AdminServerOptions): Promise<voi
       if (request.method === 'GET' && path === '/api/runtime') {
         const config = await loadGatewayConfig(options.configPath);
         sendJson(response, 200, createRuntimeSnapshot(config, options, startedAtMs));
+        return;
+      }
+
+      if (request.method === 'GET' && path === '/api/reconciliation/status') {
+        sendJson(response, 200, reconciler.getStatus());
+        return;
+      }
+
+      if (request.method === 'POST' && path === '/api/reconciliation/run') {
+        // Trigger an out-of-band reconciliation pass (non-blocking).
+        void reconciler.runOnce();
+        sendJson(response, 202, { accepted: true });
         return;
       }
 

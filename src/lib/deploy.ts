@@ -265,6 +265,14 @@ async function runRemoteShellCapture(
   return await runShellCapture(`ssh ${sshOptions(node)} ${sshTarget(node)} ${shellQuote(command)}`, process.cwd(), undefined, timeoutMs);
 }
 
+export async function runRemoteShellCaptureExternal(
+  node: WorkerNodeConfig,
+  command: string,
+  timeoutMs?: number
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  return await runRemoteShellCapture(node, command, timeoutMs);
+}
+
 async function copyDirectoryToRemote(node: WorkerNodeConfig, localDir: string, remoteDir: string, context: CommandContext): Promise<void> {
   await runShell(`scp ${scpOptions(node)} -r ${localDir}/. ${sshTarget(node)}:${remoteDir}/`, process.cwd(), context);
 }
