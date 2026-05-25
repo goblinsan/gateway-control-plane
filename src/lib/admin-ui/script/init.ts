@@ -2010,6 +2010,7 @@ export const INIT_SCRIPT = `    // Keyboard nav across top-tab and sub-tab butto
         color: '#6366f1',
         providerName,
         model: firstAvailableModelId(providerName),
+        executionMode: 'orchestrated',
         costClass: 'free',
         enabled: true,
         featureFlags: {},

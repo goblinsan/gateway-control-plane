@@ -303,13 +303,19 @@ export const SERVICES_SCRIPT = `    function renderGatewayApiProfile() {
             <label>Name<input data-field="name" value="\${agent.name}" /></label>
             <label>Icon<input data-field="icon" value="\${agent.icon}" /></label>
             <label>Color<input data-field="color" value="\${agent.color}" /></label>
+            <label>Execution Mode
+              <select data-field="executionMode">
+                <option value="orchestrated" \${(agent.executionMode || 'orchestrated') === 'orchestrated' ? 'selected' : ''}>Orchestrated (agent-service)</option>
+                <option value="direct_provider" \${agent.executionMode === 'direct_provider' ? 'selected' : ''}>Direct provider</option>
+              </select>
+            </label>
             <label>Provider
-              <select data-field="providerName">
+              <select data-field="providerName" \${(agent.executionMode || 'orchestrated') === 'orchestrated' ? 'disabled' : ''}>
                 \${providerSelectOptions}
               </select>
             </label>
             <label>Model
-              <select data-field="model">
+              <select data-field="model" \${(agent.executionMode || 'orchestrated') === 'orchestrated' ? 'disabled' : ''}>
                 \${modelSelectOptions}
               </select>
             </label>
@@ -389,6 +395,13 @@ export const SERVICES_SCRIPT = `    function renderGatewayApiProfile() {
               agent.providerName = input.value;
               await fetchChatProviderModels(agent.providerName);
               agent.model = firstAvailableModelId(agent.providerName);
+              renderGatewayChatPlatformProfile();
+            } else if (field === 'executionMode') {
+              if (input.value === 'direct_provider') {
+                agent.executionMode = 'direct_provider';
+              } else {
+                agent.executionMode = 'orchestrated';
+              }
               renderGatewayChatPlatformProfile();
             } else {
               agent[field] = input.value;

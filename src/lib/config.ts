@@ -283,6 +283,7 @@ export interface GatewayChatAgentConfig {
   color: string;
   providerName: string;
   model: string;
+  executionMode?: 'direct_provider' | 'orchestrated';
   costClass: 'free' | 'cheap' | 'premium';
   systemPrompt?: string;
   temperature?: number;
@@ -1087,6 +1088,15 @@ function parseGatewayChatAgentConfig(value: unknown, field: string): GatewayChat
     throw new Error(`Invalid costClass for ${field}.costClass`);
   }
 
+  const executionMode = value.executionMode;
+  if (
+    executionMode !== undefined &&
+    executionMode !== 'direct_provider' &&
+    executionMode !== 'orchestrated'
+  ) {
+    throw new Error(`Invalid executionMode for ${field}.executionMode`);
+  }
+
   return {
     id: assertString(value.id, `${field}.id`),
     name: assertString(value.name, `${field}.name`),
@@ -1094,6 +1104,7 @@ function parseGatewayChatAgentConfig(value: unknown, field: string): GatewayChat
     color: typeof value.color === 'string' ? value.color : '#6366f1',
     providerName: assertString(value.providerName, `${field}.providerName`),
     model: assertString(value.model, `${field}.model`),
+    executionMode: executionMode as GatewayChatAgentConfig['executionMode'],
     costClass,
     systemPrompt: typeof value.systemPrompt === 'string' ? value.systemPrompt : undefined,
     temperature: value.temperature === undefined ? undefined : assertNumber(value.temperature, `${field}.temperature`),
