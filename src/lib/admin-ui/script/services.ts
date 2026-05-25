@@ -305,17 +305,17 @@ export const SERVICES_SCRIPT = `    function renderGatewayApiProfile() {
             <label>Color<input data-field="color" value="\${agent.color}" /></label>
             <label>Execution Mode
               <select data-field="executionMode">
-                <option value="orchestrated" \${(agent.executionMode || 'orchestrated') === 'orchestrated' ? 'selected' : ''}>Orchestrated (agent-service)</option>
-                <option value="direct_provider" \${agent.executionMode === 'direct_provider' ? 'selected' : ''}>Direct provider</option>
+                <option value="orchestrated" \${agent.executionMode === 'orchestrated' ? 'selected' : ''}>Orchestrated (agent-service)</option>
+                <option value="direct_provider" \${(agent.executionMode || 'direct_provider') === 'direct_provider' ? 'selected' : ''}>Direct provider</option>
               </select>
             </label>
             <label>Provider
-              <select data-field="providerName" \${(agent.executionMode || 'orchestrated') === 'orchestrated' ? 'disabled' : ''}>
+              <select data-field="providerName" \${agent.executionMode === 'orchestrated' ? 'disabled' : ''}>
                 \${providerSelectOptions}
               </select>
             </label>
             <label>Model
-              <select data-field="model" \${(agent.executionMode || 'orchestrated') === 'orchestrated' ? 'disabled' : ''}>
+              <select data-field="model" \${agent.executionMode === 'orchestrated' ? 'disabled' : ''}>
                 \${modelSelectOptions}
               </select>
             </label>
