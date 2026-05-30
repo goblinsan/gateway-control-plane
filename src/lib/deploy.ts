@@ -301,7 +301,7 @@ async function checkoutRevision(app: AppConfig, slot: Slot, revision: string, sk
 
   const gitDir = join(slotDir, '.git');
   if (!existsSync(gitDir)) {
-    await rm(slotDir, { recursive: true, force: true });
+    await runShell(`sudo rm -rf ${shellQuote(slotDir)}`, process.cwd(), context);
     await runShell(`git clone ${app.repoUrl} ${slotDir}`, process.cwd(), context);
   } else if (!skipFetch) {
     await runShell('git fetch --all --tags --prune', slotDir, context);
