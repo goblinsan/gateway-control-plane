@@ -301,7 +301,11 @@ async function checkoutRevision(app: AppConfig, slot: Slot, revision: string, sk
 
   const gitDir = join(slotDir, '.git');
   if (!existsSync(gitDir)) {
-    await runShell(`sudo rm -rf ${shellQuote(slotDir)}`, process.cwd(), context);
+    await runShell(
+      `docker run --rm -v ${shellQuote(`${slotDir}:/target`)} alpine:3.19 sh -c ${shellQuote('find /target -mindepth 1 -maxdepth 1 -exec rm -rf {} +')}`,
+      process.cwd(),
+      context
+    );
     await runShell(`git clone ${app.repoUrl} ${slotDir}`, process.cwd(), context);
   } else if (!skipFetch) {
     await runShell('git fetch --all --tags --prune', slotDir, context);
