@@ -490,6 +490,25 @@ export const ADMIN_MARKUP: string = `<body>
       <details class="card section-card" open>
         <summary>
           <div class="section-summary-copy">
+            <span class="pill">agent-service</span>
+            <h3>Agent Scheduled Jobs</h3>
+            <p>Runtime schedules executed by <code>agent-service</code>.</p>
+          </div>
+        </summary>
+        <div class="section-body">
+          <div class="split-actions">
+            <div></div>
+            <div class="toolbar">
+              <button id="reloadAgentSchedulesButton">Reload Schedules</button>
+              <button id="createDailySummaryScheduleButton" class="primary">Schedule Daily Summary</button>
+            </div>
+          </div>
+          <div id="agentSchedulesContainer" class="section-list"></div>
+        </div>
+      </details>
+      <details class="card section-card" open>
+        <summary>
+          <div class="section-summary-copy">
             <span class="pill">Jobs</span>
             <h3>Host Scheduled Jobs</h3>
             <p>Host-level scheduled commands tied to an app deployment.</p>

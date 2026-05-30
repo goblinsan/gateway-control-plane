@@ -34,6 +34,7 @@ export const BOOTSTRAP_SCRIPT = `    function renderGateway() {
       renderSecrets();
       renderJobCatalog();
       renderWorkflows();
+      renderAgentSchedules();
       renderWorkerNodes();
       renderRemoteWorkloads();
       renderBedrockServers();

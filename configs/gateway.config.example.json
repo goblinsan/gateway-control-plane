@@ -339,15 +339,15 @@
         "description": "KULRS activity automation",
         "schedule": "*:0/5",
         "workingDirectory": "__CURRENT__",
-        "execStart": "/usr/bin/node __CURRENT__/jobs/kulrs_activity.js",
+        "execStart": "/usr/bin/node --preserve-symlinks-main __CURRENT__/jobs/kulrs_activity.js",
         "user": "deploy",
         "envFilePath": "/srv/apps/gateway-api/shared/kulrs-activity.env",
         "credentialsFilePath": "/srv/apps/gateway-api/shared/kulrs.json",
         "workspaceDir": "/srv/apps/gateway-api/shared/kulrs",
         "timezone": "America/New_York",
         "createMode": "llm",
-        "llmBaseUrl": "http://127.0.0.1:5301",
-        "llmModel": "Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
+        "llmBaseUrl": "http://198.51.100.200:5301",
+        "llmModel": "qwen2.5-3b-instruct-q4_k_m.gguf",
         "llmApiKey": "",
         "llmTimeoutMs": 25000,
         "llmTemperature": 0.7,
@@ -494,6 +494,9 @@
               "top_p": 0.9,
               "ttsVoiceId": "Alan Marvin"
             }
+          },
+          "personalContext": {
+            "enabled": false
           },
           "contextSources": []
         }

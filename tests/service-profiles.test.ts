@@ -87,6 +87,9 @@ test('renderGatewayChatAgents emits sync payload shape', () => {
         costClass: 'free',
         enabled: true,
         featureFlags: {},
+        personalContext: {
+          enabled: false
+        },
         contextSources: []
       }
     ]
@@ -94,6 +97,7 @@ test('renderGatewayChatAgents emits sync payload shape', () => {
 
   assert.match(output, /"agents"/);
   assert.match(output, /"marvin"/);
+  assert.match(output, /"personalContext"/);
 });
 
 test('renderGatewayChatPlatformEnv includes derived local tts settings', async () => {

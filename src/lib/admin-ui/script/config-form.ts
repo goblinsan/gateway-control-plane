@@ -244,7 +244,10 @@ export const CONFIG_FORM_SCRIPT = `    function updateGatewayField(key, value) {
 
     function firstAvailableProviderName() {
       const providers = normalizedChatProviders();
-      return providers[0]?.name || '';
+      if (providers[0]?.name) {
+        return providers[0].name;
+      }
+      return configuredAgents().find((agent) => agent.providerName)?.providerName || '';
     }
 
     function providerOptions(currentProviderName) {
@@ -292,7 +295,14 @@ export const CONFIG_FORM_SCRIPT = `    function updateGatewayField(key, value) {
     function firstAvailableModelId(providerName) {
       const rawModels = Array.isArray(state.providerModels?.[providerName]) ? state.providerModels[providerName] : [];
       const knownModels = rawModels.map((model) => normalizeModel(model)).filter((model) => model.id);
-      return knownModels[0]?.id || '';
+      if (knownModels[0]?.id) {
+        return knownModels[0].id;
+      }
+      const matchingAgent = configuredAgents().find((agent) => agent.providerName === providerName && agent.model);
+      if (matchingAgent?.model) {
+        return matchingAgent.model;
+      }
+      return configuredAgents().find((agent) => agent.model)?.model || '';
     }
 
     function ensureAgentProviderAndModel(agent) {

@@ -547,28 +547,9 @@ export async function syncServiceProfileRuntime(
   }
 
   const baseUrl = normalizeBaseUrl(baseUrlOverride ?? config.serviceProfiles.gatewayChatPlatform.apiBaseUrl);
-  const syncUrl = `${baseUrl}/api/agents/manage/sync`;
-  const payload = {
-    agents: config.serviceProfiles.gatewayChatPlatform.agents
-  };
-  const mobileSharedToken = config.serviceProfiles.gatewayChatPlatform.environment
-    .find((entry) => entry.key === 'MOBILE_SHARED_TOKEN')
-    ?.value?.trim();
-  const syncHeaders = mobileSharedToken
-    ? { Authorization: `Bearer ${mobileSharedToken}` }
-    : undefined;
-
   context.log(
-    `${context.dryRun ? '[dry-run] ' : ''}POST ${syncUrl} (${config.serviceProfiles.gatewayChatPlatform.agents.length} agents)`
+    `${context.dryRun ? '[dry-run] ' : ''}agent sync skipped for ${baseUrl}: agent-service reads ${config.serviceProfiles.gatewayChatPlatform.agents.length} agents from the control-plane config mount`
   );
-  if (context.dryRun) {
-    return;
-  }
-
-  const response = await httpJsonRequest(syncUrl, 'POST', payload, 10_000, syncHeaders);
-  if (response.status < 200 || response.status >= 300) {
-    throw new Error(`Agent sync failed for ${syncUrl}: ${response.status} ${response.body}`);
-  }
 }
 
 export async function runServiceProfileAgent(

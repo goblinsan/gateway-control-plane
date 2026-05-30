@@ -579,6 +579,41 @@ export const INIT_SCRIPT = `    // Keyboard nav across top-tab and sub-tab butto
         setStatus(error.message, 'error');
       }
     });
+    document.getElementById('reloadAgentSchedulesButton').addEventListener('click', async () => {
+      try {
+        await fetchAgentSchedules();
+        setStatus('Agent schedules reloaded');
+      } catch (error) {
+        setStatus(error.message, 'error');
+      }
+    });
+    document.getElementById('createDailySummaryScheduleButton').addEventListener('click', async () => {
+      try {
+        if (state.agentSchedules.some((job) => job.kind === 'daily_personal_summary' && job.status !== 'cancelled')) {
+          setStatus('Daily summary schedule already exists', 'error');
+          return;
+        }
+        const runAt = new Date();
+        runAt.setHours(21, 30, 0, 0);
+        if (runAt.getTime() <= Date.now()) {
+          runAt.setDate(runAt.getDate() + 1);
+        }
+        const timezone = state.config?.personalAssistant?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
+        await requestJson('POST', '/api/agent-service/schedules', {
+          kind: 'daily_personal_summary',
+          prompt: 'Review today and yesterday using get_daily_rollup, then check get_unmapped_records for the last two days. Write a concise personal daily summary covering activity, nutrition, plan progress, missing or unmapped data, and one practical adjustment for tomorrow.',
+          thread_id: 'daily-personal-summary',
+          run_at: runAt.toISOString(),
+          recurrence: '@daily-local 21:30',
+          timezone,
+          payload: { source: 'gateway-control-plane', schedule: 'daily-personal-summary' }
+        });
+        await fetchAgentSchedules();
+        setStatus('Daily summary schedule created');
+      } catch (error) {
+        setStatus(error.message, 'error');
+      }
+    });
     document.getElementById('reloadJobsButton').addEventListener('click', async () => {
       try {
         await fetchJobsCatalog();
@@ -2001,7 +2036,8 @@ export const INIT_SCRIPT = `    // Keyboard nav across top-tab and sub-tab butto
       });
     });
     document.getElementById('addGatewayChatAgentButton').addEventListener('click', () => {
-      state.activeTab = 'agents';
+      state.activeTab = 'workloads';
+      state.activeSubTabs.workloads = 'svc-agents';
       const providerName = firstAvailableProviderName();
       state.config.serviceProfiles.gatewayChatPlatform.agents.push({
         id: '',
@@ -2014,9 +2050,11 @@ export const INIT_SCRIPT = `    // Keyboard nav across top-tab and sub-tab butto
         costClass: 'free',
         enabled: true,
         featureFlags: {},
+        personalContext: { enabled: true },
         contextSources: []
       });
       renderGatewayChatPlatformProfile();
+      applySubTabDom('workloads', 'svc-agents');
       renderActiveTab();
       syncRawJson();
     });

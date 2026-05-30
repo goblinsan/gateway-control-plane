@@ -88,6 +88,9 @@ export const DATA_SCRIPT = `    async function loadTabData(tab, options = {}) {
           if (isStale('jobsCatalog')) {
             fetches.push(fetchJobsCatalog().then(() => markLoaded('jobsCatalog')));
           }
+          if (isStale('agentSchedules')) {
+            fetches.push(fetchAgentSchedules().then(() => markLoaded('agentSchedules')));
+          }
           break;
         case 'mon-health':
           if (isStale('healthSnapshot')) {
@@ -179,6 +182,37 @@ export const DATA_SCRIPT = `    async function loadTabData(tab, options = {}) {
       const data = await requestJson('GET', '/api/jobs');
       state.jobsCatalog = Array.isArray(data?.jobs) ? data.jobs : [];
       renderJobCatalog();
+    }
+
+    async function fetchAgentSchedules() {
+      if (!state.config || !state.config.serviceProfiles.agentService.enabled) {
+        state.agentSchedules = [];
+        renderAgentSchedules();
+        return;
+      }
+      const data = await requestJson('GET', '/api/agent-service/schedules');
+      const schedules = Array.isArray(data) ? data : Array.isArray(data?.schedules) ? data.schedules : [];
+      state.agentSchedules = schedules.map(normalizeAgentSchedule);
+      renderAgentSchedules();
+    }
+
+    function normalizeAgentSchedule(job) {
+      return {
+        id: job.id || job.ID || '',
+        kind: job.kind || job.Kind || '',
+        prompt: job.prompt || job.Prompt || '',
+        thread_id: job.thread_id || job.ThreadID || '',
+        agent_id: job.agent_id || job.AgentID || '',
+        payload: job.payload || job.Payload || {},
+        run_at: job.run_at || job.RunAt || '',
+        recurrence: job.recurrence || job.Recurrence || '',
+        timezone: job.timezone || job.Timezone || '',
+        status: job.status || job.Status || '',
+        locked_until: job.locked_until || job.LockedUntil || '',
+        last_run_at: job.last_run_at || job.LastRunAt || '',
+        created_at: job.created_at || job.CreatedAt || '',
+        updated_at: job.updated_at || job.UpdatedAt || ''
+      };
     }
 
     async function fetchTtsVoices() {
@@ -628,8 +662,9 @@ export const DATA_SCRIPT = `    async function loadTabData(tab, options = {}) {
     }
 
     async function syncConfiguredAgents() {
+      await persistConfigState({ renderAfterSave: false });
       await requestJson('POST', '/api/service-profiles/gateway-chat-platform/sync');
-      setStatus('Chat agents synced to gateway-chat-platform');
+      setStatus('Agent-service reads chat agents from the saved control-plane config');
     }
 
     document.querySelectorAll('.top-tab-nav .tab-button').forEach((button) => {

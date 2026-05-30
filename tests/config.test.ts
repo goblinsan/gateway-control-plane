@@ -182,6 +182,10 @@ test('parseGatewayConfig accepts the example shape', () => {
             featureFlags: {
               codeExecution: true
             },
+            personalContext: {
+              enabled: false,
+              goals: false
+            },
             contextSources: []
           }
         ]
@@ -213,6 +217,10 @@ test('parseGatewayConfig accepts the example shape', () => {
   assert.equal(config.serviceProfiles.gatewayApi.jobRuntime.channels[0].id, 'jim-telegram');
   assert.equal(config.serviceProfiles.gatewayApi.kulrsActivity.bots[0].id, 'mireille');
   assert.equal(config.serviceProfiles.gatewayChatPlatform.agents[0].id, 'marvin');
+  assert.deepEqual(config.serviceProfiles.gatewayChatPlatform.agents[0].personalContext, {
+    enabled: false,
+    goals: false
+  });
   assert.equal(config.serviceProfiles.gatewayChatPlatform.tts.baseUrl, 'http://198.51.100.111:5000');
   assert.equal(config.serviceProfiles.piProxy.systemdUnitName, 'bedrock-lan-proxy.service');
   assert.equal(config.serviceProfiles.piProxy.nodeId, 'core-node');

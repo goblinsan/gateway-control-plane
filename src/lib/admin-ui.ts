@@ -1047,20 +1047,32 @@ async function proxyChatPlatformRequest(
 async function proxyAgentServiceRequest(
   config: GatewayConfig,
   path: string,
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   body?: unknown,
-  timeoutMs?: number
+  timeoutMs?: number,
+  extraHeaders?: Record<string, string>
 ): Promise<{ status: number; payload: unknown }> {
   const profile = config.serviceProfiles.agentService;
   if (!profile.enabled) {
     throw new Error('agentService service profile is disabled');
   }
   const baseUrl = normalizeBaseUrl(profile.apiBaseUrl);
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...(extraHeaders ?? {}) };
   if (profile.apiKey) {
     headers['X-API-Key'] = profile.apiKey;
   }
   return requestJsonUrl(`${baseUrl}${path}`, method, body, headers, timeoutMs);
+}
+
+function getAgentServiceUserId(config: GatewayConfig): string {
+  const userId = getServiceProfileEnvironmentValue(config, 'MOBILE_SHARED_USER_ID')
+    || process.env.AGENT_SERVICE_USER_ID
+    || process.env.MOBILE_SHARED_USER_ID
+    || '';
+  if (!userId.trim()) {
+    throw new Error('MOBILE_SHARED_USER_ID is required to manage agent-service schedules');
+  }
+  return userId.trim();
 }
 
 async function runLocalCapture(command: string, timeoutMs = 5000): Promise<{ stdout: string; stderr: string; code: number }> {
@@ -1258,7 +1270,7 @@ function buildCoachActivationFallbackMessage(profile: PersonalAssistantConfig): 
 
 async function requestJsonUrl(
   requestUrl: string,
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   body?: unknown,
   extraHeaders?: Record<string, string>,
   timeoutMs: number = 10_000
@@ -1736,6 +1748,61 @@ export async function startAdminServer(options: AdminServerOptions): Promise<voi
         return;
       }
 
+      if (path === '/api/agent-service/schedules' && request.method === 'GET') {
+        const config = await loadGatewayConfig(options.configPath);
+        const result = await proxyAgentServiceRequest(
+          config,
+          '/internal/schedules?limit=200',
+          'GET',
+          undefined,
+          undefined,
+          { 'X-User-ID': getAgentServiceUserId(config) }
+        );
+        sendJson(response, result.status, result.payload);
+        return;
+      }
+
+      if (path === '/api/agent-service/schedules' && request.method === 'POST') {
+        const config = await loadGatewayConfig(options.configPath);
+        const rawBody = await readBody(request);
+        const body = rawBody.trim().length > 0 ? JSON.parse(rawBody) : {};
+        const result = await proxyAgentServiceRequest(
+          config,
+          '/internal/schedules',
+          'POST',
+          body,
+          undefined,
+          { 'X-User-ID': getAgentServiceUserId(config) }
+        );
+        sendJson(response, result.status, result.payload);
+        return;
+      }
+
+      const agentScheduleActionMatch = path.match(/^\/api\/agent-service\/schedules\/([^/]+)(?:\/(pause|resume))?$/);
+      if (agentScheduleActionMatch && ['PATCH', 'DELETE', 'POST'].includes(request.method || '')) {
+        const config = await loadGatewayConfig(options.configPath);
+        const scheduleId = encodeURIComponent(decodeURIComponent(agentScheduleActionMatch[1]));
+        const action = agentScheduleActionMatch[2];
+        const headers = { 'X-User-ID': getAgentServiceUserId(config) };
+        if (request.method === 'PATCH' && !action) {
+          const rawBody = await readBody(request);
+          const body = rawBody.trim().length > 0 ? JSON.parse(rawBody) : {};
+          const result = await proxyAgentServiceRequest(config, `/internal/schedules/${scheduleId}`, 'PATCH', body, undefined, headers);
+          sendJson(response, result.status, result.payload);
+          return;
+        }
+        if (request.method === 'DELETE' && !action) {
+          const result = await proxyAgentServiceRequest(config, `/internal/schedules/${scheduleId}`, 'DELETE', undefined, undefined, headers);
+          sendJson(response, result.status, result.payload);
+          return;
+        }
+        if (request.method === 'POST' && (action === 'pause' || action === 'resume')) {
+          const result = await proxyAgentServiceRequest(config, `/internal/schedules/${scheduleId}/${action}`, 'POST', undefined, undefined, headers);
+          sendJson(response, result.status, result.payload);
+          return;
+        }
+      }
+
       if (request.method === 'GET' && path === '/api/diagnostics/coach') {
         const config = await loadGatewayConfig(options.configPath);
         const diagnostics = await buildCoachDiagnostics(config);
@@ -1856,7 +1923,7 @@ export async function startAdminServer(options: AdminServerOptions): Promise<voi
           { dryRun: false, log: () => undefined },
           config.serviceProfiles.gatewayChatPlatform.apiBaseUrl
         );
-        sendJson(response, 200, { message: 'Synced gateway-chat-platform agents' });
+        sendJson(response, 200, { message: 'Agent-service reads chat agents directly from the control-plane config' });
         return;
       }
 

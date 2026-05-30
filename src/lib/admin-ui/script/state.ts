@@ -10,6 +10,7 @@ export function renderScriptState(defaultWorkflowSeedPath: string): string {
       runtime: null,
       workflows: [],
       jobsCatalog: [],
+      agentSchedules: [],
       minecraftStatuses: {},
       remoteServiceStatuses: {},
       remoteDeployJobIds: {},

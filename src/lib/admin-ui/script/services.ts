@@ -290,6 +290,7 @@ export const SERVICES_SCRIPT = `    function renderGatewayApiProfile() {
           .join('');
         const providerSelectOptions = providerOptions(agent.providerName);
         const modelSelectOptions = modelOptions(agent.providerName, agent.model);
+        const usesPersonalContext = !agent.personalContext || agent.personalContext.enabled !== false;
         const element = document.createElement('div');
         element.className = 'card';
         element.innerHTML = \`
@@ -310,12 +311,12 @@ export const SERVICES_SCRIPT = `    function renderGatewayApiProfile() {
               </select>
             </label>
             <label>Provider
-              <select data-field="providerName" \${agent.executionMode === 'orchestrated' ? 'disabled' : ''}>
+              <select data-field="providerName">
                 \${providerSelectOptions}
               </select>
             </label>
             <label>Model
-              <select data-field="model" \${agent.executionMode === 'orchestrated' ? 'disabled' : ''}>
+              <select data-field="model">
                 \${modelSelectOptions}
               </select>
             </label>
@@ -341,11 +342,13 @@ export const SERVICES_SCRIPT = `    function renderGatewayApiProfile() {
             <label>Temperature<input type="number" step="0.1" data-field="temperature" value="\${agent.temperature ?? ''}" /></label>
             <label>Max Tokens<input type="number" data-field="maxTokens" value="\${agent.maxTokens ?? ''}" /></label>
             <label class="check"><input type="checkbox" data-field="enableReasoning" \${agent.enableReasoning ? 'checked' : ''} /> Reasoning</label>
+            <label class="check"><input type="checkbox" data-field="personalContextEnabled" \${usesPersonalContext ? 'checked' : ''} /> Use Profile & Goals</label>
           </div>
           <label>System Prompt<textarea data-field="systemPrompt">\${agent.systemPrompt || ''}</textarea></label>
           <label>Feature Flags JSON<textarea data-field="featureFlags">\${JSON.stringify(agent.featureFlags || {}, null, 2)}</textarea></label>
           <label>Routing Policy JSON<textarea data-field="routingPolicy">\${JSON.stringify(agent.routingPolicy || {}, null, 2)}</textarea></label>
           <label>Endpoint Config JSON<textarea data-field="endpointConfig">\${JSON.stringify(agent.endpointConfig || {}, null, 2)}</textarea></label>
+          <label>Personal Context JSON<textarea data-field="personalContext">\${JSON.stringify(agent.personalContext || {}, null, 2)}</textarea></label>
           <label>Context Sources JSON<textarea data-field="contextSources">\${JSON.stringify(agent.contextSources || [], null, 2)}</textarea></label>
         \`;
 
@@ -366,6 +369,12 @@ export const SERVICES_SCRIPT = `    function renderGatewayApiProfile() {
             }
             if (field === 'enabled' || field === 'enableReasoning') {
               agent[field] = input.checked;
+            } else if (field === 'personalContextEnabled') {
+              agent.personalContext = { ...(agent.personalContext || {}), enabled: input.checked };
+              if (input.checked && Object.keys(agent.personalContext).length === 1) {
+                delete agent.personalContext;
+              }
+              renderGatewayChatPlatformProfile();
             } else if (field === 'temperature' || field === 'maxTokens') {
               agent[field] = input.value ? Number(input.value) : undefined;
               if (!input.value) {
@@ -381,6 +390,11 @@ export const SERVICES_SCRIPT = `    function renderGatewayApiProfile() {
               const value = parseJsonField(input.value, {});
               agent.endpointConfig = Object.keys(value).length > 0 ? value : undefined;
               if (!agent.endpointConfig) delete agent.endpointConfig;
+            } else if (field === 'personalContext') {
+              const value = parseJsonField(input.value, {});
+              agent.personalContext = Object.keys(value).length > 0 ? value : undefined;
+              if (!agent.personalContext) delete agent.personalContext;
+              renderGatewayChatPlatformProfile();
             } else if (field === 'contextSources') {
               agent.contextSources = parseJsonField(input.value, []);
             } else if (field === 'ttsVoiceId') {
@@ -589,6 +603,107 @@ export const SERVICES_SCRIPT = `    function renderGatewayApiProfile() {
             await requestJson('DELETE', \`/api/workflows/\${workflow.id}\`);
             await fetchWorkflows();
             setStatus('Workflow deleted');
+          } catch (error) {
+            setStatus(error.message, 'error');
+          }
+        });
+
+        container.appendChild(element);
+      });
+    }
+
+    function renderAgentSchedules() {
+      const container = document.getElementById('agentSchedulesContainer');
+      if (!container) {
+        return;
+      }
+      container.innerHTML = '';
+
+      if (!state.config || !state.config.serviceProfiles.agentService.enabled) {
+        container.innerHTML = '<p>agentService service profile is disabled.</p>';
+        return;
+      }
+
+      if (state.agentSchedules.length === 0) {
+        container.innerHTML = '<p>No active agent schedules reported by agent-service.</p>';
+        return;
+      }
+
+      state.agentSchedules.forEach((job) => {
+        const element = document.createElement('div');
+        element.className = 'card';
+        const paused = job.status === 'paused';
+        element.innerHTML = \`
+          <div class="split-actions">
+            <div>
+              <strong>\${job.kind || 'prompt'}</strong>
+              <p>Status: \${job.status || 'unknown'} | Next run: \${job.run_at || job.RunAt || 'not set'}</p>
+            </div>
+            <div class="toolbar">
+              <button data-action="save" class="primary">Save</button>
+              <button data-action="toggle">\${paused ? 'Resume' : 'Pause'}</button>
+              <button data-action="cancel" class="danger">Cancel</button>
+            </div>
+          </div>
+          <div class="row">
+            <label>Kind<input data-field="kind" value="\${job.kind || ''}" /></label>
+            <label>Run At<input data-field="run_at" value="\${job.run_at || job.RunAt || ''}" /></label>
+            <label>Recurrence<input data-field="recurrence" value="\${job.recurrence || ''}" placeholder="@daily-local 21:30" /></label>
+            <label>Timezone<input data-field="timezone" value="\${job.timezone || ''}" placeholder="America/New_York" /></label>
+            <label>Agent ID<input data-field="agent_id" value="\${job.agent_id || job.agentId || ''}" /></label>
+            <label>Thread ID<input data-field="thread_id" value="\${job.thread_id || job.threadId || ''}" /></label>
+          </div>
+          <label>Prompt<textarea data-field="prompt">\${job.prompt || ''}</textarea></label>
+          <div class="meta-list">
+            <div><strong>ID:</strong> \${job.id || 'unknown'}</div>
+            <div><strong>Last Run:</strong> \${job.last_run_at || job.lastRunAt || 'never'}</div>
+            <div><strong>Updated:</strong> \${job.updated_at || job.updatedAt || 'unknown'}</div>
+          </div>
+        \`;
+
+        element.querySelectorAll('input, textarea').forEach((input) => {
+          input.addEventListener('input', () => {
+            const field = input.dataset.field;
+            if (!field) {
+              return;
+            }
+            job[field] = input.value;
+          });
+        });
+
+        element.querySelector('[data-action="save"]').addEventListener('click', async () => {
+          try {
+            await requestJson('PATCH', \`/api/agent-service/schedules/\${encodeURIComponent(job.id)}\`, {
+              kind: job.kind,
+              prompt: job.prompt,
+              run_at: job.run_at || job.RunAt,
+              recurrence: job.recurrence || '',
+              timezone: job.timezone || '',
+              agent_id: job.agent_id || job.agentId || '',
+              thread_id: job.thread_id || job.threadId || ''
+            });
+            await fetchAgentSchedules();
+            setStatus('Agent schedule saved');
+          } catch (error) {
+            setStatus(error.message, 'error');
+          }
+        });
+
+        element.querySelector('[data-action="toggle"]').addEventListener('click', async () => {
+          try {
+            await requestJson('POST', \`/api/agent-service/schedules/\${encodeURIComponent(job.id)}/\${paused ? 'resume' : 'pause'}\`);
+            await fetchAgentSchedules();
+            setStatus(\`Agent schedule \${paused ? 'resumed' : 'paused'}\`);
+          } catch (error) {
+            setStatus(error.message, 'error');
+          }
+        });
+
+        element.querySelector('[data-action="cancel"]').addEventListener('click', async () => {
+          try {
+            await requestJson('DELETE', \`/api/agent-service/schedules/\${encodeURIComponent(job.id)}\`);
+            await fetchAgentSchedules();
+            setStatus('Agent schedule cancelled');
           } catch (error) {
             setStatus(error.message, 'error');
           }

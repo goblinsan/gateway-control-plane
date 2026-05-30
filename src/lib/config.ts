@@ -276,6 +276,15 @@ export interface ChatEndpointConfig {
   modelParams?: Record<string, unknown>;
 }
 
+export interface ChatPersonalContextConfig {
+  enabled?: boolean;
+  profile?: boolean;
+  memories?: boolean;
+  goals?: boolean;
+  events?: boolean;
+  personalData?: boolean;
+}
+
 export interface GatewayChatAgentConfig {
   id: string;
   name: string;
@@ -293,6 +302,7 @@ export interface GatewayChatAgentConfig {
   featureFlags: Record<string, boolean>;
   routingPolicy?: ChatRoutingPolicyConfig;
   endpointConfig?: ChatEndpointConfig;
+  personalContext?: ChatPersonalContextConfig;
   contextSources: ChatContextSourceConfig[];
 }
 
@@ -970,7 +980,7 @@ function parseKulrsActivityConfig(value: unknown, appId: string): KulrsActivityC
       description: 'KULRS activity automation',
       schedule: '*:0/5',
       workingDirectory: '__CURRENT__',
-      execStart: '/usr/bin/node __CURRENT__/jobs/kulrs_activity.js',
+      execStart: '/usr/bin/node --preserve-symlinks-main __CURRENT__/jobs/kulrs_activity.js',
       user: 'deploy',
       envFilePath: '/srv/apps/gateway-api/shared/kulrs-activity.env',
       credentialsFilePath: '/srv/apps/gateway-api/shared/kulrs.json',
@@ -978,7 +988,7 @@ function parseKulrsActivityConfig(value: unknown, appId: string): KulrsActivityC
       timezone: 'America/New_York',
       createMode: 'llm',
       llmBaseUrl: 'http://127.0.0.1:5301',
-      llmModel: 'Mistral-7B-Instruct-v0.3-Q4_K_M.gguf',
+      llmModel: 'qwen2.5-3b-instruct-q4_k_m.gguf',
       llmApiKey: '',
       llmTimeoutMs: 25000,
       llmTemperature: 0.7,
@@ -1002,7 +1012,7 @@ function parseKulrsActivityConfig(value: unknown, appId: string): KulrsActivityC
     workingDirectory: typeof value.workingDirectory === 'string' ? value.workingDirectory : '__CURRENT__',
     execStart: typeof value.execStart === 'string'
       ? value.execStart
-      : '/usr/bin/node __CURRENT__/jobs/kulrs_activity.js',
+      : '/usr/bin/node --preserve-symlinks-main __CURRENT__/jobs/kulrs_activity.js',
     user: typeof value.user === 'string' ? value.user : 'deploy',
     group: typeof value.group === 'string' ? value.group : undefined,
     envFilePath: typeof value.envFilePath === 'string' ? value.envFilePath : `/srv/apps/${appId}/shared/kulrs-activity.env`,
@@ -1013,7 +1023,7 @@ function parseKulrsActivityConfig(value: unknown, appId: string): KulrsActivityC
     timezone: typeof value.timezone === 'string' ? value.timezone : 'America/New_York',
     createMode: value.createMode === 'image' ? 'image' : 'llm',
     llmBaseUrl: typeof value.llmBaseUrl === 'string' ? value.llmBaseUrl : 'http://127.0.0.1:5301',
-    llmModel: typeof value.llmModel === 'string' ? value.llmModel : 'Mistral-7B-Instruct-v0.3-Q4_K_M.gguf',
+    llmModel: typeof value.llmModel === 'string' ? value.llmModel : 'qwen2.5-3b-instruct-q4_k_m.gguf',
     llmApiKey: typeof value.llmApiKey === 'string' ? value.llmApiKey : '',
     llmTimeoutMs: parseNumberLike(value.llmTimeoutMs, 25000),
     llmTemperature: parseNumberLike(value.llmTemperature, 0.7),
@@ -1086,6 +1096,21 @@ function parseContextSource(value: unknown, field: string): ChatContextSourceCon
   };
 }
 
+function parseChatPersonalContext(value: unknown, field: string): ChatPersonalContextConfig {
+  if (!isRecord(value)) {
+    throw new Error(`Expected object for ${field}`);
+  }
+
+  const result: ChatPersonalContextConfig = {};
+  if (typeof value.enabled === 'boolean') result.enabled = value.enabled;
+  if (typeof value.profile === 'boolean') result.profile = value.profile;
+  if (typeof value.memories === 'boolean') result.memories = value.memories;
+  if (typeof value.goals === 'boolean') result.goals = value.goals;
+  if (typeof value.events === 'boolean') result.events = value.events;
+  if (typeof value.personalData === 'boolean') result.personalData = value.personalData;
+  return result;
+}
+
 function parseGatewayChatAgentConfig(value: unknown, field: string): GatewayChatAgentConfig {
   if (!isRecord(value)) {
     throw new Error(`Expected object for ${field}`);
@@ -1122,6 +1147,7 @@ function parseGatewayChatAgentConfig(value: unknown, field: string): GatewayChat
     featureFlags: isRecord(value.featureFlags) ? assertBooleanRecord(value.featureFlags, `${field}.featureFlags`) : {},
     routingPolicy: value.routingPolicy === undefined ? undefined : parseChatRoutingPolicy(value.routingPolicy, `${field}.routingPolicy`),
     endpointConfig: value.endpointConfig === undefined ? undefined : parseChatEndpointConfig(value.endpointConfig, `${field}.endpointConfig`),
+    personalContext: value.personalContext === undefined ? undefined : parseChatPersonalContext(value.personalContext, `${field}.personalContext`),
     contextSources: Array.isArray(value.contextSources)
       ? value.contextSources.map((source, index) => parseContextSource(source, `${field}.contextSources[${index}]`))
       : []
