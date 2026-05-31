@@ -111,3 +111,37 @@ jobs:
           else
             /opt/gateway-control-plane/deploy/bin/deploy-app.sh --config /opt/gateway-control-plane/configs/gateway.config.json --app gateway-chat-platform
           fi
+      - name: Verify mobile bearer auth
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import json
+          import urllib.request
+
+          env_path = Path('/srv/apps/gateway-chat-platform/shared/chat-api.env')
+          values = {}
+          for line in env_path.read_text().splitlines():
+              if not line or line.startswith('#') or '=' not in line:
+                  continue
+              key, value = line.split('=', 1)
+              values[key] = value.strip().strip('"')
+          token = values.get('MOBILE_SHARED_TOKEN', '').strip()
+          if not token:
+              raise SystemExit('MOBILE_SHARED_TOKEN is still empty after recovery')
+
+          config = json.loads(Path('/opt/gateway-control-plane/configs/gateway.config.json').read_text())
+          app = next(app for app in config['apps'] if app['id'] == 'gateway-chat-platform')
+          slot = Path('/srv/apps/gateway-chat-platform/current-slot').read_text().strip()
+          port = app['slots'][slot]['port']
+          request = urllib.request.Request(
+              f'http://127.0.0.1:{port}/api/session/me',
+              headers={
+                  'Authorization': f'Bearer {token}',
+                  'X-Gateway-Client-Platform': 'ios',
+              },
+          )
+          with urllib.request.urlopen(request, timeout=10) as response:
+              if response.status != 200:
+                  raise SystemExit(f'Mobile bearer verification failed with HTTP {response.status}')
+          print('Mobile bearer verification passed; token value not logged')
+          PY
