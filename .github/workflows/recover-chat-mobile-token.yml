@@ -33,7 +33,10 @@ jobs:
           python3 <<'PY'
           from pathlib import Path
           import json
+          import re
           import subprocess
+
+          ENV_ASSIGNMENT_RE = re.compile(r'^\s*(?:export\s+)?(MOBILE_SHARED_TOKENS?)=(.*)$')
 
           env_path = Path('/srv/apps/gateway-chat-platform/shared/chat-api.env')
           env_path.parent.mkdir(parents=True, exist_ok=True)
@@ -56,7 +59,7 @@ jobs:
 
           def add_token(tokens, token):
               normalized = (token or '').strip().strip('"').strip("'")
-              if normalized and normalized not in tokens:
+              if normalized and normalized not in {'***', 'redacted', '<redacted>'} and not normalized.startswith('<') and normalized not in tokens:
                   tokens.append(normalized)
 
           def escape_env_value(value):
@@ -66,11 +69,70 @@ jobs:
                   return value
               return '"' + value.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n') + '"'
 
+          def collect_from_env_map(env_values):
+              before = len(collected_tokens)
+              add_token(collected_tokens, env_values.get('MOBILE_SHARED_TOKEN', ''))
+              for token in split_tokens(env_values.get('MOBILE_SHARED_TOKENS', '')):
+                  add_token(collected_tokens, token)
+              return len(collected_tokens) > before
+
+          def collect_from_text(text):
+              before = len(collected_tokens)
+              for line in text.splitlines():
+                  match = ENV_ASSIGNMENT_RE.match(line)
+                  if not match:
+                      continue
+                  key, value = match.groups()
+                  if key == 'MOBILE_SHARED_TOKEN':
+                      add_token(collected_tokens, value)
+                  else:
+                      for token in split_tokens(value.strip().strip('"').strip("'")):
+                          add_token(collected_tokens, token)
+              return len(collected_tokens) > before
+
+          def collect_from_json_value(value):
+              before = len(collected_tokens)
+
+              def visit(item):
+                  if isinstance(item, dict):
+                      key = item.get('key')
+                      if key == 'MOBILE_SHARED_TOKEN':
+                          add_token(collected_tokens, str(item.get('value', '')))
+                      elif key == 'MOBILE_SHARED_TOKENS':
+                          for token in split_tokens(str(item.get('value', ''))):
+                              add_token(collected_tokens, token)
+                      for child in item.values():
+                          visit(child)
+                  elif isinstance(item, list):
+                      for child in item:
+                          visit(child)
+
+              visit(value)
+              return len(collected_tokens) > before
+
+          def collect_from_file(path):
+              try:
+                  stat = path.stat()
+              except OSError:
+                  return False
+              if not path.is_file() or stat.st_size <= 0 or stat.st_size > 2_000_000:
+                  return False
+              try:
+                  text = path.read_text(errors='ignore')
+              except OSError:
+                  return False
+              found = collect_from_text(text)
+              stripped = text.lstrip()
+              if stripped.startswith('{') or stripped.startswith('['):
+                  try:
+                      found = collect_from_json_value(json.loads(text)) or found
+                  except json.JSONDecodeError:
+                      pass
+              return found
+
           values = parse_env(existing)
           collected_tokens = []
-          add_token(collected_tokens, values.get('MOBILE_SHARED_TOKEN', ''))
-          for token in split_tokens(values.get('MOBILE_SHARED_TOKENS', '')):
-              add_token(collected_tokens, token)
+          collect_from_env_map(values)
 
           names = subprocess.check_output(
               ['docker', 'ps', '-a', '--filter', 'name=gateway-chat-platform', '--format', '{{.Names}}'],
@@ -86,11 +148,29 @@ jobs:
                       key, value = entry.split('=', 1)
                       container_env[key] = value
               before = len(collected_tokens)
-              add_token(collected_tokens, container_env.get('MOBILE_SHARED_TOKEN', ''))
-              for token in split_tokens(container_env.get('MOBILE_SHARED_TOKENS', '')):
-                  add_token(collected_tokens, token)
+              collect_from_env_map(container_env)
               if len(collected_tokens) > before:
                   containers_with_tokens += 1
+
+          skip_parts = {'.git', 'node_modules', '.build', 'dist', 'coverage'}
+          scan_roots = [
+              Path('/srv/apps/gateway-chat-platform'),
+              Path('/opt/gateway-control-plane'),
+              Path.home() / 'actions-runner',
+              Path.home() / '_work',
+              Path('/tmp'),
+          ]
+          scanned_files = 0
+          files_with_tokens = 0
+          for root in scan_roots:
+              if not root.exists():
+                  continue
+              for path in root.rglob('*'):
+                  if any(part in skip_parts for part in path.parts):
+                      continue
+                  scanned_files += 1
+                  if collect_from_file(path):
+                      files_with_tokens += 1
 
           if not collected_tokens:
               raise SystemExit('No non-empty mobile bearer tokens found in shared env or existing gateway-chat-platform containers')
@@ -120,7 +200,7 @@ jobs:
                   updated.append(f'{key}={escape_env_value(value)}')
 
           env_path.write_text('\n'.join(updated).rstrip() + '\n')
-          print(f'Merged {len(collected_tokens)} mobile bearer token(s) from shared env and {containers_with_tokens} container(s); values not logged')
+          print(f'Merged {len(collected_tokens)} mobile bearer token(s) from shared env, {containers_with_tokens} container(s), and {files_with_tokens} file(s) across {scanned_files} scanned path(s); values not logged')
           PY
       - name: Redeploy chat platform
         run: |
