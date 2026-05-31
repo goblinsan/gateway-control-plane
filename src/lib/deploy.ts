@@ -522,10 +522,14 @@ async function preserveExistingSecretEnvValues(
 
   const existingValues = parseEnvRawValues(await readFile(path, 'utf8'));
   const existingKeys = new Set(keys);
-  return contents
+  const renderedKeys = new Set<string>();
+  const resolvedLines = contents
     .split(/\r?\n/)
     .map((line) => {
       const match = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(line);
+      if (match) {
+        renderedKeys.add(match[1]);
+      }
       if (!match || !existingKeys.has(match[1])) {
         return line;
       }
@@ -536,8 +540,19 @@ async function preserveExistingSecretEnvValues(
       }
 
       return line;
-    })
-    .join('\n');
+    });
+
+  for (const key of keys) {
+    if (renderedKeys.has(key)) {
+      continue;
+    }
+    const existingValue = existingValues.get(key);
+    if (!isEmptyEnvRawValue(existingValue)) {
+      resolvedLines.push(`${key}=${existingValue}`);
+    }
+  }
+
+  return resolvedLines.join('\n');
 }
 
 async function writeServiceProfileFile(
@@ -588,9 +603,13 @@ export async function installServiceProfileFiles(config: GatewayConfig, appId: s
   }
 
   if (config.serviceProfiles.gatewayChatPlatform.enabled && config.serviceProfiles.gatewayChatPlatform.appId === appId) {
-    const secretKeys = config.serviceProfiles.gatewayChatPlatform.environment
-      .filter((entry) => entry.secret)
-      .map((entry) => entry.key);
+    const secretKeys = Array.from(new Set([
+      ...config.serviceProfiles.gatewayChatPlatform.environment
+        .filter((entry) => entry.secret)
+        .map((entry) => entry.key),
+      'MOBILE_SHARED_TOKEN',
+      'MOBILE_SHARED_TOKENS'
+    ]));
     await writeServiceProfileFile(
       config.serviceProfiles.gatewayChatPlatform.apiEnvFilePath,
       renderGatewayChatPlatformEnv(config.serviceProfiles.gatewayChatPlatform),

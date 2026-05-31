@@ -209,6 +209,31 @@ test('installServiceProfileFiles preserves existing non-empty chat secret env va
   assert.match(output, /^CHAT_DEFAULT_USER_ID=mobile-user$/m);
 });
 
+test('installServiceProfileFiles preserves omitted non-empty chat mobile rotation tokens', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'gateway-control-plane-'));
+  const config = createConfig(root);
+  const context = { dryRun: false, log: () => undefined };
+  config.serviceProfiles.gatewayChatPlatform.environment = [
+    { key: 'MOBILE_SHARED_TOKEN', value: '', secret: true },
+    { key: 'OPENAI_API_KEY', value: '', secret: true }
+  ];
+  await writeFile(
+    join(root, 'chat-api.env'),
+    [
+      'MOBILE_SHARED_TOKEN=live-token',
+      'MOBILE_SHARED_TOKENS="previous-token"',
+      ''
+    ].join('\n'),
+    'utf8'
+  );
+
+  await installServiceProfileFiles(config, 'gateway-chat-platform', context);
+
+  const output = await readFile(join(root, 'chat-api.env'), 'utf8');
+  assert.match(output, /^MOBILE_SHARED_TOKEN=live-token$/m);
+  assert.match(output, /^MOBILE_SHARED_TOKENS="previous-token"$/m);
+});
+
 test('syncServiceProfileRuntime accepts chat-platform app in dry-run mode', async () => {
   const root = await mkdtemp(join(tmpdir(), 'gateway-control-plane-'));
   const config = createConfig(root);
