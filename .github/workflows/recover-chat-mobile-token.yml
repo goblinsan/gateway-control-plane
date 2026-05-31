@@ -1,0 +1,113 @@
+name: Recover Chat Mobile Token
+
+on:
+  workflow_dispatch:
+    inputs:
+      chat_revision:
+        description: Optional gateway-chat-platform revision to redeploy after token recovery
+        required: false
+        type: string
+
+concurrency:
+  group: gateway-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on:
+      - self-hosted
+      - gateway
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync host control-plane checkout
+        run: |
+          if [ ! -d /opt/gateway-control-plane/.git ]; then
+            sudo git clone https://github.com/goblinsan/gateway-control-plane.git /opt/gateway-control-plane
+            sudo chown -R "$USER":"$(id -gn)" /opt/gateway-control-plane
+          fi
+          git -C /opt/gateway-control-plane merge --abort || true
+          git -C /opt/gateway-control-plane fetch --all --tags --prune
+          git -C /opt/gateway-control-plane checkout --force "${GITHUB_SHA}"
+      - name: Recover mobile token from existing containers
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import json
+          import subprocess
+
+          env_path = Path('/srv/apps/gateway-chat-platform/shared/chat-api.env')
+          env_path.parent.mkdir(parents=True, exist_ok=True)
+          existing = env_path.read_text() if env_path.exists() else ''
+
+          def parse_env(text):
+              values = {}
+              for line in text.splitlines():
+                  if not line or line.startswith('#') or '=' not in line:
+                      continue
+                  key, value = line.split('=', 1)
+                  values[key] = value.strip().strip('"')
+              return values
+
+          def is_present(value):
+              return bool((value or '').strip().strip('"').strip("'"))
+
+          values = parse_env(existing)
+          if is_present(values.get('MOBILE_SHARED_TOKEN')):
+              print('MOBILE_SHARED_TOKEN already present in shared env; no recovery needed')
+              raise SystemExit(0)
+
+          names = subprocess.check_output(
+              ['docker', 'ps', '-a', '--filter', 'name=gateway-chat-platform', '--format', '{{.Names}}'],
+              text=True,
+          ).splitlines()
+
+          recovered = {}
+          recovered_from = None
+          for name in names:
+              data = json.loads(subprocess.check_output(['docker', 'inspect', name], text=True))[0]
+              container_env = {}
+              for entry in data.get('Config', {}).get('Env', []) or []:
+                  if '=' in entry:
+                      key, value = entry.split('=', 1)
+                      container_env[key] = value
+              token = container_env.get('MOBILE_SHARED_TOKEN', '')
+              if is_present(token):
+                  recovered['MOBILE_SHARED_TOKEN'] = token
+                  if is_present(container_env.get('MOBILE_SHARED_TOKENS', '')):
+                      recovered['MOBILE_SHARED_TOKENS'] = container_env['MOBILE_SHARED_TOKENS']
+                  recovered_from = name
+                  break
+
+          if 'MOBILE_SHARED_TOKEN' not in recovered:
+              raise SystemExit('No non-empty MOBILE_SHARED_TOKEN found in existing gateway-chat-platform containers')
+
+          lines = existing.splitlines()
+          seen = set()
+          updated = []
+          for line in lines:
+              if '=' not in line or line.startswith('#'):
+                  updated.append(line)
+                  continue
+              key, _ = line.split('=', 1)
+              if key in recovered:
+                  updated.append(f'{key}={recovered[key]}')
+                  seen.add(key)
+              else:
+                  updated.append(line)
+          for key, value in recovered.items():
+              if key not in seen:
+                  updated.append(f'{key}={value}')
+
+          env_path.write_text('\n'.join(updated).rstrip() + '\n')
+          print(f'Recovered MOBILE_SHARED_TOKEN from {recovered_from}; value not logged')
+          if 'MOBILE_SHARED_TOKENS' in recovered:
+              print('Recovered MOBILE_SHARED_TOKENS; value not logged')
+          PY
+      - name: Redeploy chat platform
+        run: |
+          REVISION="${{ inputs.chat_revision }}"
+          if [ -n "$REVISION" ]; then
+            /opt/gateway-control-plane/deploy/bin/deploy-app.sh --config /opt/gateway-control-plane/configs/gateway.config.json --app gateway-chat-platform --revision "$REVISION"
+          else
+            /opt/gateway-control-plane/deploy/bin/deploy-app.sh --config /opt/gateway-control-plane/configs/gateway.config.json --app gateway-chat-platform
+          fi
