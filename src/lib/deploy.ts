@@ -491,13 +491,68 @@ function normalizeBaseUrl(url: string): string {
   return url.endsWith('/') ? url.slice(0, -1) : url;
 }
 
-async function writeServiceProfileFile(path: string, contents: string, context: CommandContext): Promise<void> {
+function parseEnvRawValues(contents: string): Map<string, string> {
+  const values = new Map<string, string>();
+  for (const line of contents.split(/\r?\n/)) {
+    const match = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(line);
+    if (match) {
+      values.set(match[1], match[2]);
+    }
+  }
+  return values;
+}
+
+function isEmptyEnvRawValue(value: string | undefined): boolean {
+  if (value === undefined) {
+    return true;
+  }
+  const trimmed = value.trim();
+  return trimmed === '' || trimmed === '""' || trimmed === "''";
+}
+
+async function preserveExistingSecretEnvValues(
+  path: string,
+  contents: string,
+  keys: string[],
+  context: CommandContext
+): Promise<string> {
+  if (context.dryRun || keys.length === 0 || !existsSync(path)) {
+    return contents;
+  }
+
+  const existingValues = parseEnvRawValues(await readFile(path, 'utf8'));
+  const existingKeys = new Set(keys);
+  return contents
+    .split(/\r?\n/)
+    .map((line) => {
+      const match = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(line);
+      if (!match || !existingKeys.has(match[1])) {
+        return line;
+      }
+
+      const existingValue = existingValues.get(match[1]);
+      if (isEmptyEnvRawValue(match[2]) && !isEmptyEnvRawValue(existingValue)) {
+        return `${match[1]}=${existingValue}`;
+      }
+
+      return line;
+    })
+    .join('\n');
+}
+
+async function writeServiceProfileFile(
+  path: string,
+  contents: string,
+  context: CommandContext,
+  preserveExistingSecretKeys: string[] = []
+): Promise<void> {
   context.log(`${context.dryRun ? '[dry-run] ' : ''}write ${path}`);
   if (context.dryRun) {
     return;
   }
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, contents, 'utf8');
+  const resolvedContents = await preserveExistingSecretEnvValues(path, contents, preserveExistingSecretKeys, context);
+  await writeFile(path, resolvedContents, 'utf8');
 }
 
 export async function installServiceProfileFiles(config: GatewayConfig, appId: string, context: CommandContext): Promise<void> {
@@ -533,10 +588,14 @@ export async function installServiceProfileFiles(config: GatewayConfig, appId: s
   }
 
   if (config.serviceProfiles.gatewayChatPlatform.enabled && config.serviceProfiles.gatewayChatPlatform.appId === appId) {
+    const secretKeys = config.serviceProfiles.gatewayChatPlatform.environment
+      .filter((entry) => entry.secret)
+      .map((entry) => entry.key);
     await writeServiceProfileFile(
       config.serviceProfiles.gatewayChatPlatform.apiEnvFilePath,
       renderGatewayChatPlatformEnv(config.serviceProfiles.gatewayChatPlatform),
-      context
+      context,
+      secretKeys
     );
   }
 }

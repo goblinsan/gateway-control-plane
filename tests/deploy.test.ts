@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
@@ -176,6 +176,37 @@ test('installServiceProfileFiles writes env files for matching apps', async () =
   assert.match(await readFile(join(root, 'kulrs-activity.env'), 'utf8'), /KULRS_WORKSPACE_DIR=/);
   assert.match(await readFile(join(root, 'kulrs.json'), 'utf8'), /"firebaseApiKey": "firebase-test"/);
   assert.match(await readFile(join(root, 'chat-api.env'), 'utf8'), /OPENAI_API_KEY=sk-test/);
+});
+
+test('installServiceProfileFiles preserves existing non-empty chat secret env values', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'gateway-control-plane-'));
+  const config = createConfig(root);
+  const context = { dryRun: false, log: () => undefined };
+  config.serviceProfiles.gatewayChatPlatform.environment = [
+    { key: 'MOBILE_SHARED_TOKEN', value: '', secret: true },
+    { key: 'MOBILE_SHARED_TOKENS', value: '', secret: true },
+    { key: 'OPENAI_API_KEY', value: '', secret: true },
+    { key: 'CHAT_DEFAULT_USER_ID', value: 'mobile-user', secret: false }
+  ];
+  await writeFile(
+    join(root, 'chat-api.env'),
+    [
+      'MOBILE_SHARED_TOKEN=live-token',
+      'MOBILE_SHARED_TOKENS="previous-token,older-token"',
+      'OPENAI_API_KEY=sk-live',
+      'CHAT_DEFAULT_USER_ID=old-user',
+      ''
+    ].join('\n'),
+    'utf8'
+  );
+
+  await installServiceProfileFiles(config, 'gateway-chat-platform', context);
+
+  const output = await readFile(join(root, 'chat-api.env'), 'utf8');
+  assert.match(output, /^MOBILE_SHARED_TOKEN=live-token$/m);
+  assert.match(output, /^MOBILE_SHARED_TOKENS="previous-token,older-token"$/m);
+  assert.match(output, /^OPENAI_API_KEY=sk-live$/m);
+  assert.match(output, /^CHAT_DEFAULT_USER_ID=mobile-user$/m);
 });
 
 test('syncServiceProfileRuntime accepts chat-platform app in dry-run mode', async () => {
