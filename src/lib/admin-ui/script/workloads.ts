@@ -1478,8 +1478,13 @@ export const WORKLOADS_SCRIPT = `    function workerNodeOptions(selectedNodeId) 
               try {
                 setLocalActionOutput(actionOutput, 'Running ' + action + '…', 'progress');
                 await requestJson('POST', \`/api/remote-workloads/\${encodeURIComponent(workload.id)}/minecraft/\${action}\`, {});
-                const refreshed = await refreshMinecraftStatus(workload.id);
-                setLocalActionOutput(actionOutput, 'Bedrock action completed: ' + action + '. Worker: ' + describeContainerStatus(refreshed.worker) + '. Server: ' + describeContainerStatus(refreshed.server) + '.', 'ok');
+                try {
+                  const refreshed = await refreshMinecraftStatus(workload.id);
+                  setLocalActionOutput(actionOutput, 'Bedrock action completed: ' + action + '. Worker: ' + describeContainerStatus(refreshed.worker) + '. Server: ' + describeContainerStatus(refreshed.server) + '.', 'ok');
+                } catch (refreshError) {
+                  const detail = refreshError instanceof Error ? refreshError.message : String(refreshError);
+                  setLocalActionOutput(actionOutput, 'Bedrock action completed: ' + action + '. Status refresh failed: ' + detail + '.', 'ok');
+                }
                 setStatus(\`Bedrock action completed: \${action}\`);
               } catch (error) {
                 setLocalActionOutput(actionOutput, error.message, 'error');
