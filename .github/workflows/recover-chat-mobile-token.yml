@@ -28,7 +28,7 @@ jobs:
           git -C /opt/gateway-control-plane merge --abort || true
           git -C /opt/gateway-control-plane fetch --all --tags --prune
           git -C /opt/gateway-control-plane checkout --force "${GITHUB_SHA}"
-      - name: Recover mobile token from existing containers
+      - name: Recover mobile tokens from existing containers
         run: |
           python3 <<'PY'
           from pathlib import Path
@@ -51,18 +51,33 @@ jobs:
           def is_present(value):
               return bool((value or '').strip().strip('"').strip("'"))
 
+          def split_tokens(value):
+              return [token.strip() for token in (value or '').split(',') if token.strip()]
+
+          def add_token(tokens, token):
+              normalized = (token or '').strip().strip('"').strip("'")
+              if normalized and normalized not in tokens:
+                  tokens.append(normalized)
+
+          def escape_env_value(value):
+              if not value:
+                  return '""'
+              if all(ch.isalnum() or ch in '_./:@-' for ch in value):
+                  return value
+              return '"' + value.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n') + '"'
+
           values = parse_env(existing)
-          if is_present(values.get('MOBILE_SHARED_TOKEN')):
-              print('MOBILE_SHARED_TOKEN already present in shared env; no recovery needed')
-              raise SystemExit(0)
+          collected_tokens = []
+          add_token(collected_tokens, values.get('MOBILE_SHARED_TOKEN', ''))
+          for token in split_tokens(values.get('MOBILE_SHARED_TOKENS', '')):
+              add_token(collected_tokens, token)
 
           names = subprocess.check_output(
               ['docker', 'ps', '-a', '--filter', 'name=gateway-chat-platform', '--format', '{{.Names}}'],
               text=True,
           ).splitlines()
 
-          recovered = {}
-          recovered_from = None
+          containers_with_tokens = 0
           for name in names:
               data = json.loads(subprocess.check_output(['docker', 'inspect', name], text=True))[0]
               container_env = {}
@@ -70,16 +85,22 @@ jobs:
                   if '=' in entry:
                       key, value = entry.split('=', 1)
                       container_env[key] = value
-              token = container_env.get('MOBILE_SHARED_TOKEN', '')
-              if is_present(token):
-                  recovered['MOBILE_SHARED_TOKEN'] = token
-                  if is_present(container_env.get('MOBILE_SHARED_TOKENS', '')):
-                      recovered['MOBILE_SHARED_TOKENS'] = container_env['MOBILE_SHARED_TOKENS']
-                  recovered_from = name
-                  break
+              before = len(collected_tokens)
+              add_token(collected_tokens, container_env.get('MOBILE_SHARED_TOKEN', ''))
+              for token in split_tokens(container_env.get('MOBILE_SHARED_TOKENS', '')):
+                  add_token(collected_tokens, token)
+              if len(collected_tokens) > before:
+                  containers_with_tokens += 1
 
-          if 'MOBILE_SHARED_TOKEN' not in recovered:
-              raise SystemExit('No non-empty MOBILE_SHARED_TOKEN found in existing gateway-chat-platform containers')
+          if not collected_tokens:
+              raise SystemExit('No non-empty mobile bearer tokens found in shared env or existing gateway-chat-platform containers')
+
+          primary_token = collected_tokens[0]
+          rotation_tokens = [token for token in collected_tokens[1:] if token != primary_token]
+          recovered = {
+              'MOBILE_SHARED_TOKEN': primary_token,
+              'MOBILE_SHARED_TOKENS': ','.join(rotation_tokens),
+          }
 
           lines = existing.splitlines()
           seen = set()
@@ -90,18 +111,16 @@ jobs:
                   continue
               key, _ = line.split('=', 1)
               if key in recovered:
-                  updated.append(f'{key}={recovered[key]}')
+                  updated.append(f'{key}={escape_env_value(recovered[key])}')
                   seen.add(key)
               else:
                   updated.append(line)
           for key, value in recovered.items():
               if key not in seen:
-                  updated.append(f'{key}={value}')
+                  updated.append(f'{key}={escape_env_value(value)}')
 
           env_path.write_text('\n'.join(updated).rstrip() + '\n')
-          print(f'Recovered MOBILE_SHARED_TOKEN from {recovered_from}; value not logged')
-          if 'MOBILE_SHARED_TOKENS' in recovered:
-              print('Recovered MOBILE_SHARED_TOKENS; value not logged')
+          print(f'Merged {len(collected_tokens)} mobile bearer token(s) from shared env and {containers_with_tokens} container(s); values not logged')
           PY
       - name: Redeploy chat platform
         run: |
@@ -125,23 +144,31 @@ jobs:
                   continue
               key, value = line.split('=', 1)
               values[key] = value.strip().strip('"')
-          token = values.get('MOBILE_SHARED_TOKEN', '').strip()
-          if not token:
-              raise SystemExit('MOBILE_SHARED_TOKEN is still empty after recovery')
+          tokens = []
+          primary_token = values.get('MOBILE_SHARED_TOKEN', '').strip()
+          if primary_token:
+              tokens.append(primary_token)
+          for token in values.get('MOBILE_SHARED_TOKENS', '').split(','):
+              token = token.strip()
+              if token and token not in tokens:
+                  tokens.append(token)
+          if not tokens:
+              raise SystemExit('No mobile bearer tokens are configured after recovery')
 
           config = json.loads(Path('/opt/gateway-control-plane/configs/gateway.config.json').read_text())
           app = next(app for app in config['apps'] if app['id'] == 'gateway-chat-platform')
           slot = Path('/srv/apps/gateway-chat-platform/current-slot').read_text().strip()
           port = app['slots'][slot]['port']
-          request = urllib.request.Request(
-              f'http://127.0.0.1:{port}/api/session/me',
-              headers={
-                  'Authorization': f'Bearer {token}',
-                  'X-Gateway-Client-Platform': 'ios',
-              },
-          )
-          with urllib.request.urlopen(request, timeout=10) as response:
-              if response.status != 200:
-                  raise SystemExit(f'Mobile bearer verification failed with HTTP {response.status}')
-          print('Mobile bearer verification passed; token value not logged')
+          for index, token in enumerate(tokens, start=1):
+              request = urllib.request.Request(
+                  f'http://127.0.0.1:{port}/api/session/me',
+                  headers={
+                      'Authorization': f'Bearer {token}',
+                      'X-Gateway-Client-Platform': 'ios',
+                  },
+              )
+              with urllib.request.urlopen(request, timeout=10) as response:
+                  if response.status != 200:
+                      raise SystemExit(f'Mobile bearer verification failed for configured token #{index} with HTTP {response.status}')
+          print(f'Mobile bearer verification passed for {len(tokens)} configured token(s); values not logged')
           PY
