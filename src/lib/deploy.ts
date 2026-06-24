@@ -117,7 +117,7 @@ async function runShellCapture(
     const timer = timeoutMs && timeoutMs > 0
       ? setTimeout(() => {
         timedOut = true;
-        child.kill('SIGTERM');
+        child.kill('SIGKILL');
       }, timeoutMs)
       : null;
     child.stdout?.on('data', (chunk: Buffer | string) => {
@@ -163,7 +163,7 @@ async function runCommandCapture(
     const timer = timeoutMs && timeoutMs > 0
       ? setTimeout(() => {
         timedOut = true;
-        child.kill('SIGTERM');
+        child.kill('SIGKILL');
       }, timeoutMs)
       : null;
 
@@ -1366,6 +1366,106 @@ async function readRemoteWorkerTimeZone(node: WorkerNodeConfig, containerName: s
   return timeZone.length > 0 ? timeZone : null;
 }
 
+function extractMarkedSection(output: string, marker: string, nextMarkers: string[]): string {
+  const startMarker = `__GCP_${marker}__`;
+  const start = output.indexOf(startMarker);
+  if (start < 0) {
+    return '';
+  }
+  const contentStart = start + startMarker.length;
+  let end = output.length;
+  for (const candidate of nextMarkers) {
+    const next = output.indexOf(`__GCP_${candidate}__`, contentStart);
+    if (next >= 0 && next < end) {
+      end = next;
+    }
+  }
+  return output.slice(contentStart, end).trim();
+}
+
+function parseRemoteJsonSnapshot(output: string): { exists: boolean; value: unknown | null; error?: string } {
+  const trimmed = output.trim();
+  if (!trimmed || trimmed === '__MISSING__') {
+    return { exists: false, value: null };
+  }
+  try {
+    return {
+      exists: true,
+      value: JSON.parse(trimmed) as unknown
+    };
+  } catch (error) {
+    return {
+      exists: true,
+      value: null,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+async function inspectMinecraftWorkloadStatusSnapshot(
+  node: WorkerNodeConfig,
+  workerContainerName: string,
+  serverContainerName: string,
+  runtimeDir: string
+): Promise<{
+  worker: RemoteContainerStatus;
+  server: RemoteContainerStatus;
+  workerConfigSnapshot: { exists: boolean; value: unknown | null; error?: string };
+  workerStateSnapshot: { exists: boolean; value: unknown | null; error?: string };
+  workerTimeZone: string | null;
+}> {
+  const inspectFormat = '{{json .State}}@@{{json .NetworkSettings.Ports}}@@{{json .HostConfig.NetworkMode}}@@{{json .Config.Image}}@@{{json .Image}}@@{{json .Created}}';
+  const inspectBlock = (containerName: string) => [
+    `if ${node.dockerCommand} inspect ${shellQuote(containerName)} >/dev/null 2>&1; then`,
+    `${node.dockerCommand} inspect ${shellQuote(containerName)} --format ${shellQuote(inspectFormat)}`,
+    'else',
+    `printf '__MISSING__'`,
+    'fi'
+  ].join('\n');
+  const fileBlock = (path: string) => [
+    `if [ -f ${shellQuote(path)} ]; then`,
+    `cat ${shellQuote(path)}`,
+    'else',
+    `printf '__MISSING__'`,
+    'fi'
+  ].join('\n');
+  const command = [
+    `printf '__GCP_WORKER__\\n'`,
+    inspectBlock(workerContainerName),
+    `printf '\\n__GCP_SERVER__\\n'`,
+    inspectBlock(serverContainerName),
+    `printf '\\n__GCP_CONFIG__\\n'`,
+    fileBlock(`${runtimeDir}/worker-config.json`),
+    `printf '\\n__GCP_STATE__\\n'`,
+    fileBlock(`${runtimeDir}/worker-state.json`),
+    `printf '\\n__GCP_TZ__\\n'`,
+    `${node.dockerCommand} exec ${shellQuote(workerContainerName)} node -e ${shellQuote("process.stdout.write(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')")} 2>/dev/null || true`,
+    `printf '\\n__GCP_END__\\n'`
+  ].join('\n');
+  const result = await runRemoteShellCapture(node, command, 10_000);
+  if (result.code !== 0) {
+    const error = result.stderr.trim() || result.stdout.trim() || `status snapshot failed (${result.code})`;
+    return {
+      worker: { containerName: workerContainerName, exists: false, status: 'error', running: false, error },
+      server: { containerName: serverContainerName, exists: false, status: 'error', running: false, error },
+      workerConfigSnapshot: { exists: false, value: null, error },
+      workerStateSnapshot: { exists: false, value: null, error },
+      workerTimeZone: null
+    };
+  }
+
+  const markers = ['WORKER', 'SERVER', 'CONFIG', 'STATE', 'TZ', 'END'];
+  const workerOutput = extractMarkedSection(result.stdout, 'WORKER', markers);
+  const serverOutput = extractMarkedSection(result.stdout, 'SERVER', markers);
+  return {
+    worker: parseRemoteContainerInspectOutput(workerContainerName, workerOutput || '__MISSING__'),
+    server: parseRemoteContainerInspectOutput(serverContainerName, serverOutput || '__MISSING__'),
+    workerConfigSnapshot: parseRemoteJsonSnapshot(extractMarkedSection(result.stdout, 'CONFIG', markers)),
+    workerStateSnapshot: parseRemoteJsonSnapshot(extractMarkedSection(result.stdout, 'STATE', markers)),
+    workerTimeZone: extractMarkedSection(result.stdout, 'TZ', markers).trim() || null
+  };
+}
+
 function buildMinecraftAutoUpdateStatus(
   workload: RemoteWorkloadConfig,
   worker: RemoteContainerStatus,
@@ -1833,13 +1933,13 @@ export async function getMinecraftWorkloadStatus(config: GatewayConfig, workload
   const workerContainerName = `${getRemoteWorkerProjectName(node)}-service`;
   const serverContainerName = `${getRemoteWorkloadProjectName(workload)}-server`;
   const runtimeDir = getRemoteWorkerRuntimeDir(node);
-  const [worker, server, workerConfigSnapshot, workerStateSnapshot] = await Promise.all([
-    inspectRemoteContainer(node, workerContainerName),
-    inspectRemoteContainer(node, serverContainerName),
-    readRemoteJsonFile(node, `${runtimeDir}/worker-config.json`),
-    readRemoteJsonFile(node, `${runtimeDir}/worker-state.json`)
-  ]);
-  const workerTimeZone = worker.running ? await readRemoteWorkerTimeZone(node, workerContainerName) : null;
+  const {
+    worker,
+    server,
+    workerConfigSnapshot,
+    workerStateSnapshot,
+    workerTimeZone
+  } = await inspectMinecraftWorkloadStatusSnapshot(node, workerContainerName, serverContainerName, runtimeDir);
   const serverRuntime = emptyMinecraftServerRuntimeStatus(100);
   const workerState = workerStateSnapshot.value && typeof workerStateSnapshot.value === 'object'
     ? workerStateSnapshot.value as {
