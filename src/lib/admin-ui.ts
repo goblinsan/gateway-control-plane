@@ -2845,12 +2845,15 @@ export async function startAdminServer(options: AdminServerOptions): Promise<voi
         if (!w.enabled || w.kind !== 'minecraft-bedrock-server') continue;
         const t0 = Date.now();
         try {
-          const status = await getMinecraftWorkloadStatus(config, w.id);
+          const status = buildFastMinecraftWorkloadStatus(config, w.id) as {
+            server?: { running?: boolean };
+            worker?: unknown;
+          };
           // status.server is the container inspect result with .running and .status
           const isHealthy = status.server?.running === true;
           results.push({
             kind: 'workload', id: w.id, label: `${w.id} (${w.kind})`,
-            status: isHealthy ? 'healthy' : 'down',
+            status: isHealthy ? 'healthy' : 'unknown',
             responseTimeMs: Date.now() - t0,
             details: { server: status.server, worker: status.worker }
           });
