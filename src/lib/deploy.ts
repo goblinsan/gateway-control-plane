@@ -110,14 +110,28 @@ async function runShellCapture(
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   const { spawn } = await import('node:child_process');
   return await new Promise((resolve, reject) => {
-    const child = spawn(command, { cwd, shell: true, stdio: ['ignore', 'pipe', 'pipe'], env: extraEnv ? { ...process.env, ...extraEnv } : undefined });
+    const child = spawn(command, {
+      cwd,
+      shell: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: Boolean(timeoutMs && timeoutMs > 0),
+      env: extraEnv ? { ...process.env, ...extraEnv } : undefined
+    });
     let stdout = '';
     let stderr = '';
     let timedOut = false;
     const timer = timeoutMs && timeoutMs > 0
       ? setTimeout(() => {
         timedOut = true;
-        child.kill('SIGKILL');
+        if (child.pid) {
+          try {
+            process.kill(-child.pid, 'SIGKILL');
+          } catch {
+            child.kill('SIGKILL');
+          }
+        } else {
+          child.kill('SIGKILL');
+        }
       }, timeoutMs)
       : null;
     child.stdout?.on('data', (chunk: Buffer | string) => {
@@ -158,12 +172,24 @@ async function runCommandCapture(
   return await new Promise((resolve, reject) => {
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
-    const child = spawn(command, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(command, args, {
+      cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: Boolean(timeoutMs && timeoutMs > 0)
+    });
     let timedOut = false;
     const timer = timeoutMs && timeoutMs > 0
       ? setTimeout(() => {
         timedOut = true;
-        child.kill('SIGKILL');
+        if (child.pid) {
+          try {
+            process.kill(-child.pid, 'SIGKILL');
+          } catch {
+            child.kill('SIGKILL');
+          }
+        } else {
+          child.kill('SIGKILL');
+        }
       }, timeoutMs)
       : null;
 
