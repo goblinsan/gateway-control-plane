@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { buildArtifacts } from './build.ts';
-import { getAllScheduledJobs, getWorkerNode, loadGatewayConfig, parseGatewayConfig, saveGatewayConfig, type GatewayConfig, type PersonalAssistantConfig } from './config.ts';
+import { getAllScheduledJobs, getRemoteWorkload, getWorkerNode, loadGatewayConfig, parseGatewayConfig, saveGatewayConfig, type GatewayConfig, type PersonalAssistantConfig } from './config.ts';
 import {
   bootstrapWorkerNode,
   controlContainerServiceWorkload,
@@ -51,6 +51,8 @@ import { DEFAULT_WORKFLOW_SEED_PATH, importWorkflowSeed, planWorkflowSeedImport,
 import { buildCoachActivationPrompt, buildPersonalAssistantWorkflowSeeds, buildProjectTrackingUpserts, upsertManagedAssistantAgents, writePersonalAssistantPlanFile } from './personal-assistant.ts';
 import { renderAdminPage } from './admin-ui/index.ts';
 import { mergeRedactedConfigWithStoredSecrets, sanitizeGatewayConfigForClient } from './admin-config-redaction.ts';
+import { getRemoteWorkloadProjectName } from './remote-workloads.ts';
+import { getRemoteWorkerProjectName } from './remote-worker.ts';
 
 export interface AdminServerOptions {
   configPath: string;
@@ -972,6 +974,52 @@ async function buildPiProxyRegistry(config: GatewayConfig): Promise<PiProxyRegis
       pollIntervalSeconds: config.serviceProfiles.piProxy.pollIntervalSeconds
     },
     servers: registryServers
+  };
+}
+
+function buildFastMinecraftWorkloadStatus(config: GatewayConfig, workloadId: string): unknown {
+  const workload = getRemoteWorkload(config, workloadId);
+  if (!(workload.kind === 'minecraft-bedrock-server' && workload.minecraft)) {
+    throw new Error(`Remote workload ${workloadId} is not a minecraft-bedrock-server workload`);
+  }
+
+  const node = getWorkerNode(config, workload.nodeId);
+  const unknownContainer = (containerName: string, configuredImage?: string) => ({
+    containerName,
+    exists: true,
+    status: 'unknown',
+    running: false,
+    networkMode: workload.minecraft?.networkMode ?? null,
+    startedAt: null,
+    createdAt: null,
+    configuredImage: configuredImage ?? null,
+    imageId: null,
+    ports: {}
+  });
+
+  return {
+    workloadId: workload.id,
+    nodeId: node.id,
+    configuredServerPort: workload.minecraft.serverPort ?? null,
+    worker: unknownContainer(`${getRemoteWorkerProjectName(node)}-service`),
+    server: unknownContainer(`${getRemoteWorkloadProjectName(workload)}-server`, workload.minecraft.image),
+    serverRuntime: {
+      bedrockVersion: null,
+      downloadedVersion: null,
+      logs: {
+        requestedLines: 0,
+        fetchedAt: new Date().toISOString(),
+        lines: [],
+        error: 'Live Bedrock status inspection is disabled because remote Docker log probes were timing out the control-plane UI.'
+      }
+    },
+    autoUpdate: {
+      enabled: workload.minecraft.autoUpdateEnabled,
+      schedule: workload.minecraft.autoUpdateSchedule || null,
+      status: 'unknown',
+      summary: 'Auto-update runtime status has not been checked.'
+    },
+    lastManualUpdateResult: null
   };
 }
 
@@ -2056,13 +2104,11 @@ export async function startAdminServer(options: AdminServerOptions): Promise<voi
 
       if (remoteWorkloadStatusMatch && request.method === 'GET') {
         const config = await loadGatewayConfig(options.configPath);
-        const status = await getMinecraftWorkloadStatus(
-          config,
-          decodeURIComponent(remoteWorkloadStatusMatch[1])
-        );
+        const workloadId = decodeURIComponent(remoteWorkloadStatusMatch[1]);
+        const status = buildFastMinecraftWorkloadStatus(config, workloadId);
         sendJson(response, 200, {
           ...status,
-          manualUpdate: minecraftUpdateScheduler.state.updates[decodeURIComponent(remoteWorkloadStatusMatch[1])] || null
+          manualUpdate: minecraftUpdateScheduler.state.updates[workloadId] || null
         });
         return;
       }
