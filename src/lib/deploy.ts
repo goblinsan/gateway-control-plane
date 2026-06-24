@@ -1355,11 +1355,20 @@ function findNextScheduledRun(schedule: string | null, timeZone: string | null, 
     return null;
   }
 
-  const start = new Date(now.getTime() + 1000);
-  start.setMilliseconds(0);
+  if (!/^(?:\*:\d{1,2}\/\d{1,2}|\*-\*-\* \d{2}:\d{2}:\d{2})$/u.test(schedule)) {
+    return null;
+  }
 
-  for (let offsetSeconds = 0; offsetSeconds < 172_800; offsetSeconds += 1) {
-    const candidate = new Date(start.getTime() + offsetSeconds * 1000);
+  const dailySecond = /^\*-\*-\* \d{2}:\d{2}:(\d{2})$/u.exec(schedule)?.[1];
+  const start = new Date(now.getTime() + 1000);
+  start.setUTCMilliseconds(0);
+  start.setUTCSeconds(dailySecond ? Number(dailySecond) : 0);
+  if (start.getTime() <= now.getTime()) {
+    start.setUTCMinutes(start.getUTCMinutes() + 1);
+  }
+
+  for (let offsetMinutes = 0; offsetMinutes < 2_880; offsetMinutes += 1) {
+    const candidate = new Date(start.getTime() + offsetMinutes * 60_000);
     if (matchesScheduleAtExactSecond(schedule, candidate, timeZone)) {
       return candidate.toISOString();
     }
