@@ -11,6 +11,7 @@ import {
   controlMinecraftWorkload,
   getContainerServiceLogs,
   getContainerServiceWorkloadStatus,
+  getMinecraftWorkloadLogs,
   deployPiProxyService,
   deployRemoteWorkload,
   getMinecraftWorkloadStatus,
@@ -1009,8 +1010,7 @@ function buildFastMinecraftWorkloadStatus(config: GatewayConfig, workloadId: str
       logs: {
         requestedLines: 0,
         fetchedAt: new Date().toISOString(),
-        lines: [],
-        error: 'Live Bedrock status inspection is disabled because remote Docker log probes were timing out the control-plane UI.'
+        lines: []
       }
     },
     autoUpdate: {
@@ -1685,6 +1685,7 @@ export async function startAdminServer(options: AdminServerOptions): Promise<voi
       const remoteServiceStatusMatch = path.match(/^\/api\/remote-workloads\/([^/]+)\/service-status$/);
       const remoteServiceLogsMatch = path.match(/^\/api\/remote-workloads\/([^/]+)\/service-logs$/);
       const remoteServiceActionMatch = path.match(/^\/api\/remote-workloads\/([^/]+)\/service\/(start|stop|restart)$/);
+      const remoteMinecraftLogsMatch = path.match(/^\/api\/remote-workloads\/([^/]+)\/minecraft\/logs$/);
       const remoteMinecraftActionMatch = path.match(/^\/api\/remote-workloads\/([^/]+)\/minecraft\/(start|stop|restart|broadcast|kick|ban|update-if-empty|force-update)$/);
       const remoteMinecraftUpdateRequestMatch = path.match(/^\/api\/remote-workloads\/([^/]+)\/minecraft\/update-request$/);
       const projectTrackingUpdatesMatch = path.match(/^\/api\/project-tracking\/projects\/([^/]+)\/updates$/);
@@ -2129,6 +2130,15 @@ export async function startAdminServer(options: AdminServerOptions): Promise<voi
         const service = url.searchParams.get('service') || undefined;
         const tail = Math.min(Math.max(parseInt(url.searchParams.get('tail') || '100', 10) || 100, 10), 500);
         const logs = await getContainerServiceLogs(config, decodeURIComponent(remoteServiceLogsMatch[1]), service, tail);
+        sendJson(response, 200, logs);
+        return;
+      }
+
+      if (remoteMinecraftLogsMatch && request.method === 'GET') {
+        const config = await loadGatewayConfig(options.configPath);
+        const url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
+        const tail = Math.min(Math.max(parseInt(url.searchParams.get('tail') || '100', 10) || 100, 10), 500);
+        const logs = await getMinecraftWorkloadLogs(config, decodeURIComponent(remoteMinecraftLogsMatch[1]), tail);
         sendJson(response, 200, logs);
         return;
       }

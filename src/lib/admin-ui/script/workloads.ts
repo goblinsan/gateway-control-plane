@@ -1330,7 +1330,12 @@ export const WORKLOADS_SCRIPT = `    function workerNodeOptions(selectedNodeId) 
           <details class="card disclosure-card">
             <summary><strong>Server Log Tail</strong></summary>
             <p>Use this to confirm the Bedrock version the container actually announced and to inspect recent startup or handshake errors.</p>
-            \${renderMinecraftLogTail(minecraftStatus?.serverRuntime?.logs)}
+            <div class="toolbar">
+              <button data-action="refresh-minecraft-logs">Refresh Logs</button>
+            </div>
+            <div data-output="minecraft-logs">
+              \${renderMinecraftLogTail(minecraftStatus?.serverRuntime?.logs)}
+            </div>
           </details>
         \`;
 
@@ -1463,6 +1468,35 @@ export const WORKLOADS_SCRIPT = `    function workerNodeOptions(selectedNodeId) 
             } catch (error) {
               setLocalActionOutput(actionOutput, error.message, 'error');
               setStatus(error.message, 'error');
+            }
+          });
+        });
+
+        element.querySelector('[data-action="refresh-minecraft-logs"]')?.addEventListener('click', async () => {
+          const button = element.querySelector('[data-action="refresh-minecraft-logs"]');
+          const logsOutput = element.querySelector('[data-output="minecraft-logs"]');
+          await withBusyButton(button, 'Fetching…', async () => {
+            try {
+              logsOutput.innerHTML = '<p>Fetching server logs…</p>';
+              const logs = await requestJson(
+                'GET',
+                '/api/remote-workloads/' + encodeURIComponent(workload.id) + '/minecraft/logs?tail=100',
+                undefined,
+                20000
+              );
+              if (!state.minecraftStatuses[workload.id]) {
+                state.minecraftStatuses[workload.id] = {};
+              }
+              if (!state.minecraftStatuses[workload.id].serverRuntime) {
+                state.minecraftStatuses[workload.id].serverRuntime = {};
+              }
+              state.minecraftStatuses[workload.id].serverRuntime.logs = logs;
+              logsOutput.innerHTML = renderMinecraftLogTail(logs);
+              const count = Array.isArray(logs.lines) ? logs.lines.length : 0;
+              setLocalActionOutput(actionOutput, 'Fetched ' + count + ' Bedrock log line(s).', logs.error ? 'error' : 'ok');
+            } catch (error) {
+              logsOutput.innerHTML = '<p><strong>Log Error:</strong> ' + escapeHtml(error.message || String(error)) + '</p>';
+              setLocalActionOutput(actionOutput, error.message || String(error), 'error');
             }
           });
         });

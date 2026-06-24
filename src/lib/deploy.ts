@@ -1829,6 +1829,54 @@ export async function getMinecraftWorkloadStatus(config: GatewayConfig, workload
   };
 }
 
+export async function getMinecraftWorkloadLogs(
+  config: GatewayConfig,
+  workloadId: string,
+  tailLines = 100
+): Promise<MinecraftLogTail> {
+  const workload = getRemoteWorkload(config, workloadId);
+  if (!(workload.kind === 'minecraft-bedrock-server' && workload.minecraft)) {
+    throw new Error(`Remote workload ${workloadId} is not a minecraft-bedrock-server workload`);
+  }
+
+  const node = getWorkerNode(config, workload.nodeId);
+  const serverContainerName = `${getRemoteWorkloadProjectName(workload)}-server`;
+  const requestedLines = Math.min(Math.max(Math.floor(tailLines) || 100, 10), 500);
+  const logs: MinecraftLogTail = {
+    requestedLines,
+    fetchedAt: new Date().toISOString(),
+    lines: []
+  };
+  const command = [
+    `if ${node.dockerCommand} inspect ${shellQuote(serverContainerName)} >/dev/null 2>&1; then`,
+    `${node.dockerCommand} logs --tail ${requestedLines} ${shellQuote(serverContainerName)} 2>&1`,
+    'else',
+    `printf '__MISSING__';`,
+    'fi'
+  ].join('\n');
+  const result = await runRemoteShellCapture(node, command, 15_000);
+
+  if (result.code !== 0) {
+    return {
+      ...logs,
+      error: result.stderr.trim() || result.stdout.trim() || `log fetch failed (${result.code})`
+    };
+  }
+
+  const output = result.stdout.trimEnd();
+  if (output === '__MISSING__') {
+    return {
+      ...logs,
+      error: `Bedrock server container is missing: ${serverContainerName}`
+    };
+  }
+
+  return {
+    ...logs,
+    lines: output.length > 0 ? output.split('\n') : []
+  };
+}
+
 export async function deployPiProxyService(
   config: GatewayConfig,
   outDir: string,

@@ -436,6 +436,9 @@ export const DATA_SCRIPT = `    async function loadTabData(tab, options = {}) {
         return '<p>Log tail has not been checked yet.</p>';
       }
       const lineCount = Number.isFinite(logs.requestedLines) ? logs.requestedLines : 100;
+      if (lineCount === 0 && !logs.error) {
+        return '<p>Log tail has not been fetched yet.</p>';
+      }
       const fetchedLine = logs.fetchedAt
         ? '<p><strong>Fetched:</strong> ' + escapeHtml(formatTimestamp(logs.fetchedAt)) + '</p>'
         : '';
