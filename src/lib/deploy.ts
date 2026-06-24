@@ -253,6 +253,9 @@ function scpOptions(node: WorkerNodeConfig): string {
   return [`-P ${node.sshPort}`, baseSshOptions(node)].join(' ');
 }
 
+const REMOTE_STATUS_COMMAND_TIMEOUT_MS = 8_000;
+const REMOTE_STATUS_FILE_TIMEOUT_MS = 5_000;
+
 async function runRemoteShell(node: WorkerNodeConfig, command: string, context: CommandContext): Promise<void> {
   await runShell(`ssh ${sshOptions(node)} ${sshTarget(node)} ${shellQuote(command)}`, process.cwd(), context);
 }
@@ -1087,7 +1090,11 @@ async function prepareScheduledContainerJobSource(
   );
 }
 
-async function inspectRemoteContainer(node: WorkerNodeConfig, containerName: string): Promise<RemoteContainerStatus> {
+async function inspectRemoteContainer(
+  node: WorkerNodeConfig,
+  containerName: string,
+  timeoutMs = REMOTE_STATUS_COMMAND_TIMEOUT_MS
+): Promise<RemoteContainerStatus> {
   const inspectCommand = [
     `if ${node.dockerCommand} inspect ${shellQuote(containerName)} >/dev/null 2>&1; then`,
     `${node.dockerCommand} inspect ${shellQuote(containerName)} --format ${shellQuote('{{json .State}}@@{{json .NetworkSettings.Ports}}@@{{json .HostConfig.NetworkMode}}@@{{json .Config.Image}}@@{{json .Image}}@@{{json .Created}}')};`,
@@ -1095,7 +1102,7 @@ async function inspectRemoteContainer(node: WorkerNodeConfig, containerName: str
     `printf '__MISSING__';`,
     'fi'
   ].join('\n');
-  const result = await runRemoteShellCapture(node, inspectCommand);
+  const result = await runRemoteShellCapture(node, inspectCommand, timeoutMs);
   if (result.code !== 0) {
     return {
       containerName,
@@ -1145,8 +1152,8 @@ async function inspectRemoteMinecraftRuntime(
     'fi'
   ].join('\n');
   const [versionResult, logTailResult] = await Promise.all([
-    runRemoteShellCapture(node, versionCommand),
-    runRemoteShellCapture(node, logTailCommand)
+    runRemoteShellCapture(node, versionCommand, REMOTE_STATUS_COMMAND_TIMEOUT_MS),
+    runRemoteShellCapture(node, logTailCommand, REMOTE_STATUS_COMMAND_TIMEOUT_MS)
   ]);
   const logs: MinecraftLogTail = {
     requestedLines,
@@ -1276,7 +1283,8 @@ async function readRemoteJsonFile(
 ): Promise<{ exists: boolean; value: unknown | null; error?: string }> {
   const result = await runRemoteShellCapture(
     node,
-    `if [ -f ${shellQuote(path)} ]; then cat ${shellQuote(path)}; else printf '__MISSING__'; fi`
+    `if [ -f ${shellQuote(path)} ]; then cat ${shellQuote(path)}; else printf '__MISSING__'; fi`,
+    REMOTE_STATUS_FILE_TIMEOUT_MS
   );
 
   if (result.code !== 0) {
@@ -1309,7 +1317,8 @@ async function readRemoteJsonFile(
 async function readRemoteWorkerTimeZone(node: WorkerNodeConfig, containerName: string): Promise<string | null> {
   const result = await runRemoteShellCapture(
     node,
-    `${node.dockerCommand} exec ${shellQuote(containerName)} node -e ${shellQuote("process.stdout.write(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')")}`
+    `${node.dockerCommand} exec ${shellQuote(containerName)} node -e ${shellQuote("process.stdout.write(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')")}`,
+    REMOTE_STATUS_COMMAND_TIMEOUT_MS
   );
 
   if (result.code !== 0) {
