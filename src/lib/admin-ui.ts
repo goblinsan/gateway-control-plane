@@ -2110,7 +2110,7 @@ export async function startAdminServer(options: AdminServerOptions): Promise<voi
       if (remoteWorkloadStatusMatch && request.method === 'GET') {
         const config = await loadGatewayConfig(options.configPath);
         const workloadId = decodeURIComponent(remoteWorkloadStatusMatch[1]);
-        const status = buildFastMinecraftWorkloadStatus(config, workloadId);
+        const status = await getMinecraftWorkloadStatus(config, workloadId);
         sendJson(response, 200, {
           ...status,
           manualUpdate: minecraftUpdateScheduler.state.updates[workloadId] || null

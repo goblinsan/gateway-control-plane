@@ -147,13 +147,25 @@ async function runShellCapture(
   });
 }
 
-async function runCommandCapture(command: string, args: string[], cwd: string): Promise<{ code: number; stdout: string; stderr: string }> {
+async function runCommandCapture(
+  command: string,
+  args: string[],
+  cwd: string,
+  timeoutMs?: number
+): Promise<{ code: number; stdout: string; stderr: string }> {
   const { spawn } = await import('node:child_process');
 
   return await new Promise((resolve, reject) => {
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     const child = spawn(command, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    let timedOut = false;
+    const timer = timeoutMs && timeoutMs > 0
+      ? setTimeout(() => {
+        timedOut = true;
+        child.kill('SIGTERM');
+      }, timeoutMs)
+      : null;
 
     child.stdout.on('data', (chunk) => {
       stdoutChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
@@ -161,12 +173,23 @@ async function runCommandCapture(command: string, args: string[], cwd: string): 
     child.stderr.on('data', (chunk) => {
       stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
     });
-    child.on('error', reject);
+    child.on('error', (error) => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+      reject(error);
+    });
     child.on('exit', (code) => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+      const stderr = Buffer.concat(stderrChunks).toString('utf8');
       resolve({
-        code: code ?? 1,
+        code: timedOut ? 124 : (code ?? 1),
         stdout: Buffer.concat(stdoutChunks).toString('utf8'),
-        stderr: Buffer.concat(stderrChunks).toString('utf8')
+        stderr: timedOut
+          ? `${stderr}${stderr ? '\n' : ''}Command timed out after ${timeoutMs}ms`
+          : stderr
       });
     });
   });
@@ -245,6 +268,17 @@ function baseSshOptions(node: WorkerNodeConfig): string {
   ].join(' ');
 }
 
+function sshOptionArgs(node: WorkerNodeConfig): string[] {
+  return [
+    '-p', String(node.sshPort),
+    '-o', 'BatchMode=yes',
+    '-o', 'StrictHostKeyChecking=accept-new',
+    '-o', 'ConnectTimeout=10',
+    '-o', `UserKnownHostsFile=/tmp/gateway-control-plane-known-hosts-${node.id}`,
+    sshTarget(node)
+  ];
+}
+
 function sshOptions(node: WorkerNodeConfig): string {
   return [`-p ${node.sshPort}`, baseSshOptions(node)].join(' ');
 }
@@ -268,7 +302,7 @@ async function runRemoteShellCapture(
   const remoteCommand = timeoutMs && timeoutMs > 0
     ? `timeout ${Math.max(1, Math.ceil(timeoutMs / 1000))}s /bin/sh -lc ${shellQuote(command)}`
     : command;
-  return await runShellCapture(`ssh ${sshOptions(node)} ${sshTarget(node)} ${shellQuote(remoteCommand)}`, process.cwd(), undefined, timeoutMs);
+  return await runCommandCapture('ssh', [...sshOptionArgs(node), remoteCommand], process.cwd(), timeoutMs);
 }
 
 export async function runRemoteShellCaptureExternal(
