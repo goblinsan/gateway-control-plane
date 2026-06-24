@@ -265,7 +265,10 @@ async function runRemoteShellCapture(
   command: string,
   timeoutMs?: number
 ): Promise<{ code: number; stdout: string; stderr: string }> {
-  return await runShellCapture(`ssh ${sshOptions(node)} ${sshTarget(node)} ${shellQuote(command)}`, process.cwd(), undefined, timeoutMs);
+  const remoteCommand = timeoutMs && timeoutMs > 0
+    ? `timeout ${Math.max(1, Math.ceil(timeoutMs / 1000))}s /bin/sh -lc ${shellQuote(command)}`
+    : command;
+  return await runShellCapture(`ssh ${sshOptions(node)} ${sshTarget(node)} ${shellQuote(remoteCommand)}`, process.cwd(), undefined, timeoutMs);
 }
 
 export async function runRemoteShellCaptureExternal(
