@@ -119,19 +119,38 @@ async function runShellCapture(
     });
     let stdout = '';
     let stderr = '';
-    let timedOut = false;
-    const timer = timeoutMs && timeoutMs > 0
-      ? setTimeout(() => {
-        timedOut = true;
-        if (child.pid) {
-          try {
-            process.kill(-child.pid, 'SIGKILL');
-          } catch {
-            child.kill('SIGKILL');
-          }
-        } else {
+    let settled = false;
+    const finish = (code: number, timedOut: boolean) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timer) {
+        clearTimeout(timer);
+      }
+      resolve({
+        code,
+        stdout,
+        stderr: timedOut
+          ? `${stderr}${stderr ? '\n' : ''}Command timed out after ${timeoutMs}ms`
+          : stderr
+      });
+    };
+    const killChildProcessGroup = () => {
+      if (child.pid) {
+        try {
+          process.kill(-child.pid, 'SIGKILL');
+        } catch {
           child.kill('SIGKILL');
         }
+      } else {
+        child.kill('SIGKILL');
+      }
+    };
+    const timer = timeoutMs && timeoutMs > 0
+      ? setTimeout(() => {
+        killChildProcessGroup();
+        finish(124, true);
       }, timeoutMs)
       : null;
     child.stdout?.on('data', (chunk: Buffer | string) => {
@@ -141,21 +160,16 @@ async function runShellCapture(
       stderr += String(chunk);
     });
     child.on('exit', (code) => {
-      if (timer) {
-        clearTimeout(timer);
-      }
-      resolve({
-        code: timedOut ? 124 : (code ?? 1),
-        stdout,
-        stderr: timedOut
-          ? `${stderr}${stderr ? '\n' : ''}Command timed out after ${timeoutMs}ms`
-          : stderr
-      });
+      finish(code ?? 1, false);
     });
     child.on('error', (error) => {
       if (timer) {
         clearTimeout(timer);
       }
+      if (settled) {
+        return;
+      }
+      settled = true;
       reject(error);
     });
   });
@@ -177,19 +191,39 @@ async function runCommandCapture(
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: Boolean(timeoutMs && timeoutMs > 0)
     });
-    let timedOut = false;
-    const timer = timeoutMs && timeoutMs > 0
-      ? setTimeout(() => {
-        timedOut = true;
-        if (child.pid) {
-          try {
-            process.kill(-child.pid, 'SIGKILL');
-          } catch {
-            child.kill('SIGKILL');
-          }
-        } else {
+    let settled = false;
+    const finish = (code: number, timedOut: boolean) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timer) {
+        clearTimeout(timer);
+      }
+      const stderr = Buffer.concat(stderrChunks).toString('utf8');
+      resolve({
+        code,
+        stdout: Buffer.concat(stdoutChunks).toString('utf8'),
+        stderr: timedOut
+          ? `${stderr}${stderr ? '\n' : ''}Command timed out after ${timeoutMs}ms`
+          : stderr
+      });
+    };
+    const killChildProcessGroup = () => {
+      if (child.pid) {
+        try {
+          process.kill(-child.pid, 'SIGKILL');
+        } catch {
           child.kill('SIGKILL');
         }
+      } else {
+        child.kill('SIGKILL');
+      }
+    };
+    const timer = timeoutMs && timeoutMs > 0
+      ? setTimeout(() => {
+        killChildProcessGroup();
+        finish(124, true);
       }, timeoutMs)
       : null;
 
@@ -203,20 +237,14 @@ async function runCommandCapture(
       if (timer) {
         clearTimeout(timer);
       }
+      if (settled) {
+        return;
+      }
+      settled = true;
       reject(error);
     });
     child.on('exit', (code) => {
-      if (timer) {
-        clearTimeout(timer);
-      }
-      const stderr = Buffer.concat(stderrChunks).toString('utf8');
-      resolve({
-        code: timedOut ? 124 : (code ?? 1),
-        stdout: Buffer.concat(stdoutChunks).toString('utf8'),
-        stderr: timedOut
-          ? `${stderr}${stderr ? '\n' : ''}Command timed out after ${timeoutMs}ms`
-          : stderr
-      });
+      finish(code ?? 1, false);
     });
   });
 }
