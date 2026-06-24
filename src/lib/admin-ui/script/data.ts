@@ -567,7 +567,7 @@ export const DATA_SCRIPT = `    async function loadTabData(tab, options = {}) {
     }
 
     async function refreshMinecraftStatus(workloadId, options = {}) {
-      const status = await requestJson('GET', '/api/remote-workloads/' + encodeURIComponent(workloadId) + '/status');
+      const status = await requestJson('GET', '/api/remote-workloads/' + encodeURIComponent(workloadId) + '/status', undefined, 60000);
       state.minecraftStatuses[workloadId] = status;
       if (!options.silent) {
         renderBedrockServers();

@@ -1129,8 +1129,9 @@ async function inspectRemoteMinecraftRuntime(
     : 100;
   const versionCommand = [
     `if ${node.dockerCommand} inspect ${shellQuote(containerName)} >/dev/null 2>&1; then`,
-    `VERSION="$(${node.dockerCommand} logs ${shellQuote(containerName)} 2>&1 | sed -n 's/.*Version: \\\\{0,1\\\\}\\([0-9][0-9.]*\\).*/\\1/p' | tail -n 1)"`,
-    `DOWNLOADED="$(${node.dockerCommand} logs ${shellQuote(containerName)} 2>&1 | sed -n 's/.*Downloading Bedrock server version \\([0-9][0-9.]*\\).*/\\1/p' | tail -n 1)"`,
+    `LOGS="$(${node.dockerCommand} logs --tail ${Math.max(requestedLines, 500)} ${shellQuote(containerName)} 2>&1)"`,
+    `VERSION="$(printf '%s\\n' "$LOGS" | sed -n 's/.*Version: \\\\{0,1\\\\}\\([0-9][0-9.]*\\).*/\\1/p' | tail -n 1)"`,
+    `DOWNLOADED="$(printf '%s\\n' "$LOGS" | sed -n 's/.*Downloading Bedrock server version \\([0-9][0-9.]*\\).*/\\1/p' | tail -n 1)"`,
     `printf '%s@@%s' "$VERSION" "$DOWNLOADED"`,
     'else',
     `printf '__MISSING__';`,
