@@ -1140,6 +1140,10 @@ async function runLocalCapture(command: string, timeoutMs = 5000): Promise<{ std
   });
 }
 
+function shellArg(value: string | number): string {
+  return `'${String(value).replaceAll("'", `'\\''`)}'`;
+}
+
 function getServiceProfileEnvironmentValue(config: GatewayConfig, key: string): string | undefined {
   const value = config.serviceProfiles.gatewayChatPlatform.environment
     .find((entry) => entry.key === key)
@@ -2785,11 +2789,22 @@ export async function startAdminServer(options: AdminServerOptions): Promise<voi
       for (const node of config.workerNodes) {
         if (!node.enabled) continue;
         const t0 = Date.now();
-        try {
-          const { execSync } = await import('node:child_process');
-          execSync(`ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -p ${node.sshPort} ${node.sshUser}@${node.host} echo ok`, { timeout: 10_000, stdio: 'pipe' });
+        const result = await runLocalCapture(
+          [
+            'ssh',
+            '-o ConnectTimeout=5',
+            '-o BatchMode=yes',
+            '-o StrictHostKeyChecking=accept-new',
+            '-p',
+            shellArg(node.sshPort),
+            shellArg(`${node.sshUser}@${node.host}`),
+            'echo ok'
+          ].join(' '),
+          7_000
+        );
+        if (result.code === 0) {
           results.push({ kind: 'node', id: node.id, label: `${node.id} (${node.host})`, status: 'healthy', responseTimeMs: Date.now() - t0, details: null });
-        } catch {
+        } else {
           results.push({ kind: 'node', id: node.id, label: `${node.id} (${node.host})`, status: 'down', responseTimeMs: Date.now() - t0, details: null });
         }
       }
