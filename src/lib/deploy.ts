@@ -1805,10 +1805,8 @@ export async function getMinecraftWorkloadStatus(config: GatewayConfig, workload
     readRemoteJsonFile(node, `${runtimeDir}/worker-config.json`),
     readRemoteJsonFile(node, `${runtimeDir}/worker-state.json`)
   ]);
-  const [workerTimeZone, serverRuntime] = await Promise.all([
-    worker.running ? readRemoteWorkerTimeZone(node, workerContainerName) : Promise.resolve(null),
-    server.exists ? inspectRemoteMinecraftRuntime(node, serverContainerName, 100) : Promise.resolve(emptyMinecraftServerRuntimeStatus(100))
-  ]);
+  const workerTimeZone = worker.running ? await readRemoteWorkerTimeZone(node, workerContainerName) : null;
+  const serverRuntime = emptyMinecraftServerRuntimeStatus(100);
   const workerState = workerStateSnapshot.value && typeof workerStateSnapshot.value === 'object'
     ? workerStateSnapshot.value as {
       tasks?: Record<string, { lastResult?: MinecraftActionResult; lastRunAt?: string }>;
