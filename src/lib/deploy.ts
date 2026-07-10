@@ -74,8 +74,37 @@ export interface AgentRunResult {
   };
 }
 
+function redactOperationalMessage(value: string): string {
+  return value
+    .replace(/\b(?:10|192\.168|172\.(?:1[6-9]|2\d|3[0-1]))(?:\.\d{1,3}){2}\b/gu, '<LAN_IP>')
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/gu, '<USER_AT_HOST>')
+    .replace(/\b(token|password|secret|key|credential)(\s*[:=]\s*)\S+/giu, '$1$2<redacted>');
+}
+
+function formatShellFailure(command: string, code: number | null, stderr: string): string {
+  const codeLabel = code === null ? 'unknown' : String(code);
+  const detail = redactOperationalMessage(stderr.trim())
+    .split(/\r?\n/u)
+    .filter(Boolean)
+    .slice(-3)
+    .join(' ');
+
+  if (/^\s*(ssh|scp)\s/u.test(command)) {
+    return [
+      `Remote SSH command failed (${codeLabel}).`,
+      detail ? `Detail: ${detail}` : '',
+      'Check that the worker node is powered on, reachable from the control-plane host, and accepts the configured deploy SSH key.'
+    ].filter(Boolean).join(' ');
+  }
+
+  const safeCommand = redactOperationalMessage(command);
+  return detail
+    ? `Command failed (${codeLabel}): ${safeCommand}. Detail: ${detail}`
+    : `Command failed (${codeLabel}): ${safeCommand}`;
+}
+
 async function runShell(command: string, cwd: string, context: CommandContext): Promise<void> {
-  context.log(`$ ${context.dryRun ? '[dry-run] ' : ''}${command}`);
+  context.log(`$ ${context.dryRun ? '[dry-run] ' : ''}${redactOperationalMessage(command)}`);
   if (context.dryRun) {
     return;
   }
@@ -83,20 +112,22 @@ async function runShell(command: string, cwd: string, context: CommandContext): 
   const { spawn } = await import('node:child_process');
   await new Promise<void>((resolve, reject) => {
     const child = spawn(command, { cwd, shell: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stderr = '';
     child.stdout?.on('data', (chunk: Buffer | string) => {
       const text = String(chunk).trim();
-      if (text) { context.log(text); }
+      if (text) { context.log(redactOperationalMessage(text)); }
     });
     child.stderr?.on('data', (chunk: Buffer | string) => {
       const text = String(chunk).trim();
-      if (text) { context.log(text); }
+      stderr += `${text}\n`;
+      if (text) { context.log(redactOperationalMessage(text)); }
     });
     child.on('exit', (code) => {
       if (code === 0) {
         resolve();
         return;
       }
-      reject(new Error(`Command failed (${code}): ${command}`));
+      reject(new Error(formatShellFailure(command, code, stderr)));
     });
     child.on('error', reject);
   });
