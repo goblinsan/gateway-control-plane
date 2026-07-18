@@ -432,8 +432,11 @@ async function checkoutRevision(app: AppConfig, slot: Slot, revision: string, sk
       context
     );
     await runShell(`git clone ${app.repoUrl} ${slotDir}`, process.cwd(), context);
-  } else if (!skipFetch) {
-    await runShell('git fetch --all --tags --prune', slotDir, context);
+  } else {
+    await runShell(`git remote set-url origin ${shellQuote(app.repoUrl)}`, slotDir, context);
+    if (!skipFetch) {
+      await runShell('git fetch --all --tags --prune', slotDir, context);
+    }
   }
 
   const resolvedRevision = await resolveCheckoutRevision(slotDir, revision, context);
