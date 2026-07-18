@@ -1,26 +1,50 @@
 # CI/CD
 
-The intended CI/CD model is:
+There are now two supported deployment trigger models:
 
-- pull requests run repo checks
-- safe autofixes can update the PR branch
-- merges to `main` trigger a gateway deployment workflow
-- the gateway workflow runs on a self-hosted runner on the gateway server
+- GitHub-hosted repos can continue to use the legacy self-hosted Actions runner
+- gateway-local Forgejo repos should prefer a repo `post-receive` hook
 
-The important detail is that deployments must use the live gateway config on
-the host, not the ephemeral Actions checkout, because the host config contains
+Both models converge on the same host deploy wrapper:
+
+```bash
+/opt/gateway-control-plane/deploy/bin/deploy-app.sh --config /opt/gateway-control-plane/configs/gateway.config.json --app <app-id> --revision <revision>
+```
+
+The important detail is unchanged: deployments must use the live gateway config
+on the host, not an ephemeral CI checkout, because the host config contains
 gateway-specific routes, ports, and secrets.
 
-## Self-Hosted Runner
+## Preferred model for Forgejo
+
+For repos hosted on the local Forgejo instance, the preferred trigger is:
+
+1. push to `main`
+2. Forgejo runs a repo `post-receive` hook
+3. the hook calls `deploy-app.sh` on the gateway host
+
+This fits the current HomeOps environment better than CI runners because:
+
+- Forgejo already lives on the gateway
+- gateway-side deploys already need host-local config
+- the gateway host does not yet have general SSH pull credentials for Forgejo
+
+Before enabling this model, update the live app `repoUrl` in
+`/opt/gateway-control-plane/configs/gateway.config.json` to a local bare-repo
+path or `file://` URL on the gateway host so `deploy-app.sh` can clone/fetch
+without SSH credentials.
+
+Use [forgejo-auto-deploy.md](./forgejo-auto-deploy.md) for the concrete hook
+render/install flow.
+
+## Legacy GitHub runner model
+
+Keep the GitHub runner model only for repos that are still GitHub-hosted.
 
 Install a GitHub Actions self-hosted runner on the gateway and label it:
 
 - `self-hosted`
 - `gateway`
-
-If your GitHub plan does not allow an org-level runner, install one repo-level
-runner per repo with the same `gateway` label. The workflows still use the same
-`runs-on: [self-hosted, gateway]` matcher.
 
 Each runner needs Docker, nginx, Node 24, and access to:
 
@@ -30,105 +54,24 @@ Each runner needs Docker, nginx, Node 24, and access to:
 - `/opt/gateway-tools-platform`
 - `/srv/apps/*`
 
-## Repo Responsibilities
+This repo still ships `.github/workflows/deploy-on-merge.yml` for that legacy
+path. It remains useful during migration or for repos that have not moved to
+Forgejo yet.
 
-Each repo owns deploying its own app:
+## Repo responsibilities
 
-- `gateway-control-plane` deploys app id `gateway-control-plane`
-- `gateway-api` deploys app id `gateway-api`
-- `gateway-chat-platform` deploys app id `gateway-chat-platform`
-- `gateway-tools-platform` deploys app id `gateway-tools-platform`
+Each managed repo owns deploying its own app id:
 
-All three repos should call the same live deploy wrapper on the host:
+- `gateway-control-plane` -> `gateway-control-plane`
+- `gateway-api` -> `gateway-api`
+- `gateway-chat-platform` -> `gateway-chat-platform`
+- `gateway-tools-platform` -> `gateway-tools-platform`
 
-```bash
-/opt/gateway-control-plane/deploy/bin/deploy-app.sh --config /opt/gateway-control-plane/configs/gateway.config.json --app <app-id> --revision "${GITHUB_SHA}"
-```
-
-## This Repo's Workflow
-
-This repo's built-in `deploy-on-merge.yml` now deploys `gateway-control-plane`
-using the host config at `/opt/gateway-control-plane/configs/gateway.config.json`.
-
-The rollback workflow is intentionally generic and can target any configured app
-id, but defaults to `gateway-control-plane`.
-
-## Companion Repo Workflow Shape
-
-The companion repos should add equivalent workflows that differ only by app id.
-
-For `gateway-api`:
-
-```yaml
-name: Deploy On Merge
-
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    runs-on: [self-hosted, gateway]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - run: npm ci
-      - run: npm run build
-      - run: /opt/gateway-control-plane/deploy/bin/deploy-app.sh --config /opt/gateway-control-plane/configs/gateway.config.json --app gateway-api --revision "${GITHUB_SHA}"
-```
-
-For `gateway-chat-platform`:
-
-```yaml
-name: Deploy On Merge
-
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    runs-on: [self-hosted, gateway]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - run: corepack enable
-      - run: corepack prepare pnpm@latest --activate
-      - run: pnpm install
-      - run: pnpm --filter @gateway/chat-ui typecheck
-      - run: /opt/gateway-control-plane/deploy/bin/deploy-app.sh --config /opt/gateway-control-plane/configs/gateway.config.json --app gateway-chat-platform --revision "${GITHUB_SHA}"
-```
-
-For `gateway-tools-platform`:
-
-```yaml
-name: Deploy On Merge
-
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    runs-on: [self-hosted, gateway]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - run: npm ci
-      - run: npm run build
-      - run: /opt/gateway-control-plane/deploy/bin/deploy-app.sh --config /opt/gateway-control-plane/configs/gateway.config.json --app gateway-tools-platform --revision "${GITHUB_SHA}"
-```
+The trigger mechanism can vary, but the deploy wrapper stays the same.
 
 ## Rollback
 
-Any rollback can be triggered from this repo's workflow or directly on the
-gateway host:
+Any rollback can be triggered from CI or directly on the gateway host:
 
 ```bash
 /opt/gateway-control-plane/deploy/bin/rollback-app.sh --config /opt/gateway-control-plane/configs/gateway.config.json --app gateway-chat-platform

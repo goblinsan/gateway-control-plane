@@ -172,11 +172,18 @@ explicitly want the legacy singleton systemd service for development or rescue
 access.
 
 Each managed repo should deploy itself by invoking the control plane on the
-gateway host. The intended GitHub Actions command shape is:
+gateway host. The deploy wrapper is:
 
 ```bash
-/opt/gateway-control-plane/deploy/bin/deploy-app.sh --config /opt/gateway-control-plane/configs/gateway.config.json --app <app-id> --revision "${GITHUB_SHA}"
+/opt/gateway-control-plane/deploy/bin/deploy-app.sh --config /opt/gateway-control-plane/configs/gateway.config.json --app <app-id> --revision "<revision>"
 ```
+
+For GitHub-hosted repos, the legacy trigger path is the self-hosted Actions
+workflow in `.github/workflows/deploy-on-merge.yml`.
+
+For gateway-local Forgejo repos, prefer a repo `post-receive` hook that calls
+the same wrapper against the pushed revision. See
+[docs/forgejo-auto-deploy.md](docs/forgejo-auto-deploy.md).
 
 The three app ids are:
 

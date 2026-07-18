@@ -416,14 +416,16 @@ export const INIT_SCRIPT = `    // Keyboard nav across top-tab and sub-tab butto
       overviewRefreshBtn.addEventListener('click', async () => {
         await withBusyButton(overviewRefreshBtn, 'Refreshing…', async () => {
           state.dataLoaded.healthSnapshot = 0;
+          state.dataLoaded.alertSummary = 0;
           state.dataLoaded.projectTrackingOverview = 0;
-          const settled = await Promise.allSettled([fetchRuntime(), fetchHealthSnapshot(), fetchProjectTrackingOverview()]);
+          const settled = await Promise.allSettled([fetchRuntime(), fetchHealthSnapshot(), fetchAlertSummary(), fetchProjectTrackingOverview()]);
           const failures = settled.filter((result) => result.status === 'rejected');
           if (failures.length === 0) {
             // Only mark the snapshot fresh when both required fetches actually
             // succeeded — otherwise the 30s stale guard would suppress the
             // next retry and operators would keep looking at partial data.
             markLoaded('healthSnapshot');
+            markLoaded('alertSummary');
             markLoaded('projectTrackingOverview');
             setStatus('Overview refreshed');
           } else {
@@ -512,7 +514,7 @@ export const INIT_SCRIPT = `    // Keyboard nav across top-tab and sub-tab butto
       showNewBenchmarkModal();
     });
     // Monitoring settings auto-read
-    ['monEnabled', 'monPgHost', 'monPgPort', 'monPgDatabase', 'monPgUser', 'monPgPassword', 'monRedisHost', 'monRedisPort', 'monHealthInterval'].forEach(function(id) {
+    ['monEnabled', 'monPgHost', 'monPgPort', 'monPgDatabase', 'monPgUser', 'monPgPassword', 'monRedisHost', 'monRedisPort', 'monHealthInterval', 'monAlertEnabled', 'monAlertBaseUrl', 'monAlertSummaryPath', 'monAlertHistoryPath', 'monAlertHistoryLimit'].forEach(function(id) {
       const el = document.getElementById(id);
       if (el) el.addEventListener('change', readMonitoringSettings);
       if (el && el.type !== 'checkbox') el.addEventListener('input', readMonitoringSettings);

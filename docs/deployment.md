@@ -42,6 +42,26 @@ What it does:
 11. refresh `current`
 12. install scheduled jobs for the app
 
+## Forgejo Push-To-Main Deploys
+
+When a managed repo has moved from GitHub to the local Forgejo instance, prefer
+repo `post-receive` hooks over GitHub-style runner dispatch.
+
+The current HomeOps constraint is that the gateway host does not yet have
+general SSH pull credentials for Forgejo. Because of that, a Forgejo-migrated
+app should update its live `repoUrl` to a local bare-repo path or `file://` URL
+on the gateway host before enabling auto-deploy.
+
+Then install a repo `post-receive` hook that calls `deploy-app.sh` with the
+pushed revision. Use:
+
+```bash
+deploy/bin/render-forgejo-post-receive-hook.sh --help
+```
+
+for the supported render/install inputs, and see
+[forgejo-auto-deploy.md](./forgejo-auto-deploy.md) for the full migration flow.
+
 ## Rollback
 
 ```bash

@@ -452,6 +452,13 @@ export interface MonitoringConfig {
   postgres: { host: string; port: number; database: string; user: string; password: string };
   redis: { host: string; port: number };
   healthCheckIntervalSeconds: number;
+  alertService: {
+    enabled: boolean;
+    baseUrl: string;
+    summaryPath: string;
+    historyPath: string;
+    historyLimit: number;
+  };
 }
 
 export interface GatewayConfig {
@@ -1588,7 +1595,44 @@ function parseAdminUiSettings(value: unknown): AdminUiSettings {
 function parseMonitoringConfig(raw: unknown): MonitoringConfig | undefined {
   if (raw === undefined || raw === null) return undefined;
   if (!isRecord(raw)) throw new Error('monitoring must be an object');
-  if (!raw.enabled) return { enabled: false, postgres: { host: '', port: 5432, database: '', user: '', password: '' }, redis: { host: '', port: 6379 }, healthCheckIntervalSeconds: 60 };
+  const parseAlertServiceConfig = (value: unknown): MonitoringConfig['alertService'] => {
+    if (value === undefined || value === null) {
+      return {
+        enabled: false,
+        baseUrl: 'http://alert-service:8081',
+        summaryPath: '/api/v1/alerts/summary',
+        historyPath: '/api/v1/alerts/history',
+        historyLimit: 20,
+      };
+    }
+    if (!isRecord(value)) {
+      throw new Error('monitoring.alertService must be an object');
+    }
+    return {
+      enabled: typeof value.enabled === 'boolean' ? value.enabled : false,
+      baseUrl: typeof value.baseUrl === 'string' && value.baseUrl.length > 0
+        ? value.baseUrl
+        : 'http://alert-service:8081',
+      summaryPath: typeof value.summaryPath === 'string' && value.summaryPath.length > 0
+        ? value.summaryPath
+        : '/api/v1/alerts/summary',
+      historyPath: typeof value.historyPath === 'string' && value.historyPath.length > 0
+        ? value.historyPath
+        : '/api/v1/alerts/history',
+      historyLimit: typeof value.historyLimit === 'number' && value.historyLimit > 0
+        ? Math.floor(value.historyLimit)
+        : 20,
+    };
+  };
+  if (!raw.enabled) {
+    return {
+      enabled: false,
+      postgres: { host: '', port: 5432, database: '', user: '', password: '' },
+      redis: { host: '', port: 6379 },
+      healthCheckIntervalSeconds: 60,
+      alertService: parseAlertServiceConfig(raw.alertService),
+    };
+  }
 
   if (!isRecord(raw.postgres)) throw new Error('monitoring.postgres must be an object');
   if (!isRecord(raw.redis)) throw new Error('monitoring.redis must be an object');
@@ -1607,6 +1651,7 @@ function parseMonitoringConfig(raw: unknown): MonitoringConfig | undefined {
       port: assertNumber(raw.redis.port, 'monitoring.redis.port'),
     },
     healthCheckIntervalSeconds: typeof raw.healthCheckIntervalSeconds === 'number' ? raw.healthCheckIntervalSeconds : 60,
+    alertService: parseAlertServiceConfig(raw.alertService),
   };
 }
 

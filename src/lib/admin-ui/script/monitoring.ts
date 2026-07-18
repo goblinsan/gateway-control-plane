@@ -100,6 +100,22 @@ export const MONITORING_SCRIPT = `    // ── Monitoring: fetch + render ─�
       }
     }
 
+    async function fetchAlertSummary() {
+      try {
+        state.alertSummary = await requestJson('GET', '/api/monitoring/alerts/summary', null, 15000);
+      } catch (err) {
+        state.alertSummary = {
+          enabled: false,
+          status: 'error',
+          summary: null,
+          recentEvents: [],
+          errors: [err && err.message ? err.message : String(err)]
+        };
+      }
+      renderOverview();
+      return state.alertSummary;
+    }
+
     async function fetchProjectTrackingOverview() {
       try {
         const data = await requestJson('GET', '/api/project-tracking/overview', null, 15000);
@@ -143,7 +159,19 @@ export const MONITORING_SCRIPT = `    // ── Monitoring: fetch + render ─�
 
     function renderMonitoringSettings() {
       if (!state.config) return;
-      const mon = state.config.monitoring || { enabled: false, postgres: { host: '', port: 5432, database: '', user: '', password: '' }, redis: { host: '', port: 6379 }, healthCheckIntervalSeconds: 60 };
+      const mon = state.config.monitoring || {
+        enabled: false,
+        postgres: { host: '', port: 5432, database: '', user: '', password: '' },
+        redis: { host: '', port: 6379 },
+        healthCheckIntervalSeconds: 60,
+        alertService: {
+          enabled: false,
+          baseUrl: 'http://alert-service:8081',
+          summaryPath: '/api/v1/alerts/summary',
+          historyPath: '/api/v1/alerts/history',
+          historyLimit: 20
+        }
+      };
       document.getElementById('monEnabled').checked = mon.enabled;
       document.getElementById('monPgHost').value = mon.postgres.host;
       document.getElementById('monPgPort').value = String(mon.postgres.port);
@@ -154,6 +182,11 @@ export const MONITORING_SCRIPT = `    // ── Monitoring: fetch + render ─�
       document.getElementById('monRedisHost').value = mon.redis.host;
       document.getElementById('monRedisPort').value = String(mon.redis.port);
       document.getElementById('monHealthInterval').value = String(mon.healthCheckIntervalSeconds);
+      document.getElementById('monAlertEnabled').checked = !!(mon.alertService && mon.alertService.enabled);
+      document.getElementById('monAlertBaseUrl').value = mon.alertService && mon.alertService.baseUrl ? mon.alertService.baseUrl : 'http://alert-service:8081';
+      document.getElementById('monAlertSummaryPath').value = mon.alertService && mon.alertService.summaryPath ? mon.alertService.summaryPath : '/api/v1/alerts/summary';
+      document.getElementById('monAlertHistoryPath').value = mon.alertService && mon.alertService.historyPath ? mon.alertService.historyPath : '/api/v1/alerts/history';
+      document.getElementById('monAlertHistoryLimit').value = String(mon.alertService && mon.alertService.historyLimit ? mon.alertService.historyLimit : 20);
     }
 
     function readMonitoringSettings() {
@@ -172,6 +205,13 @@ export const MONITORING_SCRIPT = `    // ── Monitoring: fetch + render ─�
           port: parseInt(document.getElementById('monRedisPort').value) || 6379,
         },
         healthCheckIntervalSeconds: parseInt(document.getElementById('monHealthInterval').value) || 60,
+        alertService: {
+          enabled: document.getElementById('monAlertEnabled').checked,
+          baseUrl: document.getElementById('monAlertBaseUrl').value.trim() || 'http://alert-service:8081',
+          summaryPath: document.getElementById('monAlertSummaryPath').value.trim() || '/api/v1/alerts/summary',
+          historyPath: document.getElementById('monAlertHistoryPath').value.trim() || '/api/v1/alerts/history',
+          historyLimit: parseInt(document.getElementById('monAlertHistoryLimit').value) || 20,
+        }
       };
     }
 

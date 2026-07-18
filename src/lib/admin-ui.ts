@@ -234,6 +234,17 @@ interface RemoteDeployJobRecord {
   deployLog: DeployTelemetryEntry[];
 }
 
+interface AlertServiceOverview {
+  enabled: boolean;
+  status: 'ok' | 'disabled' | 'degraded' | 'error';
+  baseUrl: string | null;
+  summaryPath: string | null;
+  historyPath: string | null;
+  summary: unknown;
+  recentEvents: unknown[];
+  errors: string[];
+}
+
 interface MinecraftManualUpdateScheduler {
   filePath: string;
   state: MinecraftManualUpdateStore;
@@ -752,6 +763,10 @@ function parseGitHubRepo(repoUrl: string): { owner: string; repo: string } {
   throw new Error(`Unsupported GitHub repo URL: ${repoUrl}`);
 }
 
+function isGitHubRepoUrl(repoUrl: string): boolean {
+  return /^https:\/\/github\.com\//i.test(repoUrl.trim()) || /^git@github\.com:/i.test(repoUrl.trim());
+}
+
 function getGitHubDeployToken(config: GatewayConfig): string {
   const envToken = process.env.GITHUB_TOKEN?.trim();
   if (envToken) {
@@ -788,6 +803,13 @@ async function triggerManagedAppDeployWorkflow(
   const app = config.apps.find((candidate) => candidate.id === appId);
   if (!app) {
     throw new Error(`Unknown app: ${appId}`);
+  }
+
+  if (!isGitHubRepoUrl(app.repoUrl)) {
+    throw new Error(
+      `Managed app deploy dispatch from the admin UI currently supports GitHub-hosted repos only. ` +
+      `This app uses ${app.repoUrl}. For Forgejo-migrated repos, use the repo post-receive auto-deploy hook described in docs/forgejo-auto-deploy.md.`
+    );
   }
 
   const token = getGitHubDeployToken(config);
@@ -1543,6 +1565,89 @@ async function deleteTtsVoice(config: GatewayConfig, voiceId: string): Promise<{
 
   const baseUrl = normalizeBaseUrl(tts.baseUrl);
   return requestBinaryUrl(`${baseUrl}${tts.voicesPath}/${encodeURIComponent(voiceId)}`, 'DELETE', {});
+}
+
+function extractAlertHistoryEvents(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+  if (payload && typeof payload === 'object' && Array.isArray((payload as { events?: unknown[] }).events)) {
+    return (payload as { events: unknown[] }).events;
+  }
+  return [];
+}
+
+async function buildAlertServiceOverview(config: GatewayConfig): Promise<AlertServiceOverview> {
+  const alertService = config.monitoring?.alertService;
+  if (!alertService || !alertService.enabled) {
+    return {
+      enabled: false,
+      status: 'disabled',
+      baseUrl: null,
+      summaryPath: null,
+      historyPath: null,
+      summary: null,
+      recentEvents: [],
+      errors: [],
+    };
+  }
+
+  const baseUrl = normalizeBaseUrl(alertService.baseUrl);
+  const summaryUrl = `${baseUrl}${alertService.summaryPath}`;
+  const historyUrl = `${baseUrl}${alertService.historyPath}?limit=${encodeURIComponent(String(alertService.historyLimit))}`;
+  const errors: string[] = [];
+
+  let summaryResult: { status: number; payload: unknown };
+  try {
+    summaryResult = await requestJsonUrl(summaryUrl, 'GET', undefined, undefined, 8_000);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      enabled: true,
+      status: 'error',
+      baseUrl,
+      summaryPath: alertService.summaryPath,
+      historyPath: alertService.historyPath,
+      summary: null,
+      recentEvents: [],
+      errors: [`Summary request failed: ${message}`],
+    };
+  }
+
+  let historyResult: { status: number; payload: unknown };
+  try {
+    historyResult = await requestJsonUrl(historyUrl, 'GET', undefined, undefined, 8_000);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      enabled: true,
+      status: 'error',
+      baseUrl,
+      summaryPath: alertService.summaryPath,
+      historyPath: alertService.historyPath,
+      summary: summaryResult.payload,
+      recentEvents: [],
+      errors: [`History request failed: ${message}`],
+    };
+  }
+
+  if (summaryResult.status < 200 || summaryResult.status >= 300) {
+    errors.push(`Summary request returned ${summaryResult.status}`);
+  }
+  if (historyResult.status < 200 || historyResult.status >= 300) {
+    errors.push(`History request returned ${historyResult.status}`);
+  }
+
+  return {
+    enabled: true,
+    status: errors.length === 0 ? 'ok' : 'degraded',
+    baseUrl,
+    summaryPath: alertService.summaryPath,
+    historyPath: alertService.historyPath,
+    summary: summaryResult.payload,
+    recentEvents: extractAlertHistoryEvents(historyResult.payload),
+    errors,
+  };
 }
 
 export async function startAdminServer(options: AdminServerOptions): Promise<void> {
@@ -2587,6 +2692,12 @@ export async function startAdminServer(options: AdminServerOptions): Promise<voi
         } catch {
           sendJson(response, 200, { targets: [], collectedAt: new Date().toISOString() });
         }
+        return;
+      }
+
+      if (request.method === 'GET' && path === '/api/monitoring/alerts/summary') {
+        const config = await loadGatewayConfig(options.configPath);
+        sendJson(response, 200, await buildAlertServiceOverview(config));
         return;
       }
 

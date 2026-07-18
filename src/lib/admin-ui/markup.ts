@@ -125,6 +125,29 @@ export const ADMIN_MARKUP: string = `<body>
         <div class="overview-section-title">Runtime Snapshot</div>
         <div class="overview-runtime" id="overviewRuntimeMetrics"></div>
 
+        <div class="overview-section-title">Operational Alerts</div>
+        <div class="overview-grid" id="overviewAlertSummaryCards">
+          <div class="overview-card is-action">
+            <div class="overview-count" data-overview-alert-count="active">—</div>
+            <div class="overview-label">Active Alerts</div>
+            <div class="overview-detail" data-overview-alert-detail="active">Loading alert snapshot…</div>
+          </div>
+          <div class="overview-card is-degraded">
+            <div class="overview-count" data-overview-alert-count="known">—</div>
+            <div class="overview-label">Known Alerts</div>
+            <div class="overview-detail" data-overview-alert-detail="known">Loading alert snapshot…</div>
+          </div>
+          <div class="overview-card">
+            <div class="overview-count" data-overview-alert-count="events">—</div>
+            <div class="overview-label">Recent Events</div>
+            <div class="overview-detail" data-overview-alert-detail="events">Loading alert snapshot…</div>
+          </div>
+        </div>
+
+        <div class="overview-target-list" id="overviewAlertEventList">
+          <div class="overview-empty">Operational alert snapshot not loaded yet.</div>
+        </div>
+
         <div class="overview-section-title">Needs Action</div>
         <div class="overview-target-list" id="overviewActionList">
           <div class="overview-empty">No health data yet. Click <strong>Run Health Check</strong> to collect the first snapshot.</div>
@@ -1103,6 +1126,16 @@ export const ADMIN_MARKUP: string = `<body>
             <h4 style="margin-top:.75rem">Collection</h4>
             <div class="row">
               <label>Health Check Interval (seconds) <input id="monHealthInterval" type="number" /></label>
+            </div>
+            <h4 style="margin-top:.75rem">Alert Backend</h4>
+            <div class="row">
+              <label class="check"><input id="monAlertEnabled" type="checkbox" /> Alert Backend Enabled</label>
+              <label>Base URL <input id="monAlertBaseUrl" /></label>
+            </div>
+            <div class="row">
+              <label>Summary Path <input id="monAlertSummaryPath" /></label>
+              <label>History Path <input id="monAlertHistoryPath" /></label>
+              <label>Recent Event Limit <input id="monAlertHistoryLimit" type="number" min="1" step="1" /></label>
             </div>
           </div>
         </details>

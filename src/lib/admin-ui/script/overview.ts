@@ -79,6 +79,73 @@ export const OVERVIEW_SCRIPT = `    // Default landing tab — kept in sync with
         setCount('action', actionCount, actionDetail);
       }
 
+      function describeAlertSeverities(summary) {
+        const bySeverity = summary && summary.bySeverity && typeof summary.bySeverity === 'object' ? summary.bySeverity : {};
+        const critical = Number(bySeverity.critical || 0);
+        const warning = Number(bySeverity.warning || 0);
+        const info = Number(bySeverity.info || 0);
+        const parts = [];
+        if (critical > 0) parts.push(critical + ' critical');
+        if (warning > 0) parts.push(warning + ' warning');
+        if (info > 0) parts.push(info + ' info');
+        return parts.length > 0 ? parts.join(', ') : 'No severities reported.';
+      }
+
+      function setAlertCount(kind, value, detail) {
+        const countEl = document.querySelector('[data-overview-alert-count="' + kind + '"]');
+        const detailEl = document.querySelector('[data-overview-alert-detail="' + kind + '"]');
+        if (countEl) countEl.textContent = String(value);
+        if (detailEl) detailEl.textContent = detail;
+      }
+
+      const alertOverview = state.alertSummary;
+      const alertSummary = alertOverview && alertOverview.summary && typeof alertOverview.summary === 'object' ? alertOverview.summary : null;
+      const alertEvents = alertOverview && Array.isArray(alertOverview.recentEvents)
+        ? alertOverview.recentEvents
+        : alertSummary && Array.isArray(alertSummary.recentEvents)
+          ? alertSummary.recentEvents
+          : [];
+      const alertErrors = alertOverview && Array.isArray(alertOverview.errors) ? alertOverview.errors : [];
+
+      if (!alertOverview) {
+        setAlertCount('active', 0, 'Loading alert snapshot…');
+        setAlertCount('known', 0, 'Loading alert snapshot…');
+        setAlertCount('events', 0, 'Loading alert snapshot…');
+      } else if (!alertOverview.enabled) {
+        setAlertCount('active', 0, 'alert-service is not configured for this control plane.');
+        setAlertCount('known', 0, 'Enable the alert backend in Monitoring Settings to surface infrastructure alerts here.');
+        setAlertCount('events', 0, 'No recent alert events available.');
+      } else {
+        const activeAlerts = alertSummary && typeof alertSummary.active === 'number'
+          ? alertSummary.active
+          : alertSummary && alertSummary.byStatus && typeof alertSummary.byStatus.firing === 'number'
+            ? alertSummary.byStatus.firing
+            : 0;
+        const totalAlerts = alertSummary && typeof alertSummary.total === 'number' ? alertSummary.total : 0;
+        const recentEventCount = alertEvents.length;
+        setAlertCount(
+          'active',
+          activeAlerts,
+          activeAlerts === 0
+            ? 'No active alerts right now.'
+            : describeAlertSeverities(alertSummary)
+        );
+        setAlertCount(
+          'known',
+          totalAlerts,
+          alertOverview.status === 'ok'
+            ? 'Current alert state received from alert-service.'
+            : (alertErrors[0] || 'Alert backend responded with partial data.')
+        );
+        setAlertCount(
+          'events',
+          recentEventCount,
+          recentEventCount === 0
+            ? 'No recent alert history yet.'
+            : 'Recent alert state changes from the operational alert backend.'
+        );
+      }
+
       function targetRow(t) {
         const uptime = t.uptimePercent24h !== null && t.uptimePercent24h !== undefined ? t.uptimePercent24h.toFixed(1) + '%' : '—';
         const latency = t.responseTimeMs !== null && t.responseTimeMs !== undefined ? t.responseTimeMs + 'ms' : '—';
@@ -94,6 +161,45 @@ export const OVERVIEW_SCRIPT = `    // Default landing tab — kept in sync with
             '<span title="Response time">⏱ ' + latency + '</span>' +
           '</div>' +
         '</div>';
+      }
+
+      function alertEventRow(event) {
+        const labels = event && event.labels && typeof event.labels === 'object' ? event.labels : {};
+        const annotations = event && event.annotations && typeof event.annotations === 'object' ? event.annotations : {};
+        const severity = labels.severity || 'unknown';
+        const service = labels.service || labels.alertname || event.fingerprint || 'unknown alert';
+        const node = labels.workload_node || labels.node || labels.instance || 'unknown target';
+        const detail = annotations.summary || annotations.description || event.eventType || 'No alert summary';
+        const statusClass = event.status === 'resolved' ? 'is-healthy' : event.status === 'firing' ? 'is-down' : 'is-degraded';
+        const updatedAt = event.updatedAt ? new Date(event.updatedAt).toLocaleString() : 'unknown time';
+        return '<div class="overview-target ' + statusClass + '">' +
+          '<div>' +
+            statusBadge(event.status || 'unknown') +
+            '<strong>' + escapeHtml(String(service)) + '</strong>' +
+            ' <span class="pill">' + escapeHtml(String(severity)) + '</span>' +
+            ' <span class="pill">' + escapeHtml(String(node)) + '</span>' +
+            (event.eventType ? ' <span class="pill">' + escapeHtml(String(event.eventType)) + '</span>' : '') +
+            '<div class="overview-project-copy">' + escapeHtml(String(detail)) + '</div>' +
+          '</div>' +
+          '<div class="overview-target-meta">' +
+            '<span>' + escapeHtml(updatedAt) + '</span>' +
+          '</div>' +
+        '</div>';
+      }
+
+      const alertEventList = document.getElementById('overviewAlertEventList');
+      if (alertEventList) {
+        if (!alertOverview) {
+          alertEventList.innerHTML = '<div class="overview-empty">Loading operational alerts…</div>';
+        } else if (!alertOverview.enabled) {
+          alertEventList.innerHTML = '<div class="overview-empty">Operational alert backend is disabled in Monitoring Settings.</div>';
+        } else if (alertOverview.status !== 'ok' && alertEvents.length === 0) {
+          alertEventList.innerHTML = '<div class="overview-empty">' + escapeHtml(alertErrors[0] || 'Alert backend is not returning data.') + '</div>';
+        } else if (alertEvents.length === 0) {
+          alertEventList.innerHTML = '<div class="overview-empty">No recent alert events recorded.</div>';
+        } else {
+          alertEventList.innerHTML = alertEvents.slice(0, 8).map(alertEventRow).join('');
+        }
       }
 
       const actionList = document.getElementById('overviewActionList');
