@@ -2,4 +2,5 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-node --experimental-strip-types "${REPO_ROOT}/src/cli.ts" import-workflow-seed "$@"
+NODE_BIN="$("${REPO_ROOT}/deploy/bin/resolve-node.sh")"
+"${NODE_BIN}" --experimental-strip-types "${REPO_ROOT}/src/cli.ts" import-workflow-seed "$@"
