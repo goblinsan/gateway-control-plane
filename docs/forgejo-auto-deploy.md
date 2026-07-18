@@ -56,13 +56,13 @@ install -m 0755 /tmp/gateway-control-plane-post-receive.sh \
 The default queue target is:
 
 ```text
-/data/forgejo/deploy-queue/managed-apps
+/srv/data/forgejo/deploy-queue/managed-apps
 ```
 
-Inside the gateway host, that same directory appears as:
+Inside the Forgejo container, that same directory appears as:
 
 ```text
-/srv/data/forgejo/deploy-queue/managed-apps
+/data/deploy-queue/managed-apps
 ```
 
 ## Install the host-side queue processor
@@ -119,7 +119,7 @@ The rendered hook:
 - ignores non-`main` refs by default
 - ignores branch deletes
 - writes one JSON request per push target revision
-- logs to `/data/forgejo/deploy-queue/logs/<app>-forgejo-autodeploy.log`
+- logs to `/data/deploy-queue/logs/<app>-forgejo-autodeploy.log`
 
 The host-side processor:
 

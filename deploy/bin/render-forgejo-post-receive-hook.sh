@@ -18,7 +18,7 @@ Forgejo data bind mount. A host-side queue processor can then handle the actual
 deploy as the gateway operator user.
 
 Recommended queue dir:
-  /data/forgejo/deploy-queue/managed-apps
+  /data/deploy-queue/managed-apps
 
 Recommended host-side processor:
   deploy/bin/process-forgejo-deploy-queue.sh
@@ -31,7 +31,7 @@ shell_quote() {
 
 app_id=''
 target_ref='refs/heads/main'
-queue_dir='/data/forgejo/deploy-queue/managed-apps'
+queue_dir='/data/deploy-queue/managed-apps'
 log_path=''
 
 while [[ $# -gt 0 ]]; do
@@ -71,7 +71,7 @@ if [[ -z "$app_id" ]]; then
 fi
 
 if [[ -z "$log_path" ]]; then
-  log_path="/data/forgejo/deploy-queue/logs/${app_id}-forgejo-autodeploy.log"
+  log_path="/data/deploy-queue/logs/${app_id}-forgejo-autodeploy.log"
 fi
 
 quoted_app_id="$(shell_quote "$app_id")"
