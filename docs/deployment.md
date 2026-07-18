@@ -52,8 +52,16 @@ general SSH pull credentials for Forgejo. Because of that, a Forgejo-migrated
 app should update its live `repoUrl` to a local bare-repo path or `file://` URL
 on the gateway host before enabling auto-deploy.
 
-Then install a repo `post-receive` hook that calls `deploy-app.sh` with the
-pushed revision. Use:
+Because Forgejo itself runs in a container on this host, the repo hook should
+enqueue a deploy request into the shared Forgejo data bind mount, not call the
+host deploy wrapper directly.
+
+Then install:
+
+- a repo `post-receive` hook that writes queued deploy requests
+- a host-side queue watcher that calls `deploy-app.sh`
+
+Use:
 
 ```bash
 deploy/bin/render-forgejo-post-receive-hook.sh --help

@@ -20,8 +20,10 @@ gateway-specific routes, ports, and secrets.
 For repos hosted on the local Forgejo instance, the preferred trigger is:
 
 1. push to `main`
-2. Forgejo runs a repo `post-receive` hook
-3. the hook calls `deploy-app.sh` on the gateway host
+2. Forgejo runs a repo `post-receive` hook inside the Forgejo container
+3. the hook writes a deploy request into the shared Forgejo data bind mount
+4. a host-side systemd watcher processes that queue
+5. the watcher calls `deploy-app.sh` on the gateway host
 
 This fits the current HomeOps environment better than CI runners because:
 
@@ -35,7 +37,7 @@ path or `file://` URL on the gateway host so `deploy-app.sh` can clone/fetch
 without SSH credentials.
 
 Use [forgejo-auto-deploy.md](./forgejo-auto-deploy.md) for the concrete hook
-render/install flow.
+render/install flow and the host-side queue watcher.
 
 ## Legacy GitHub runner model
 

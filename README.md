@@ -181,8 +181,9 @@ gateway host. The deploy wrapper is:
 For GitHub-hosted repos, the legacy trigger path is the self-hosted Actions
 workflow in `.github/workflows/deploy-on-merge.yml`.
 
-For gateway-local Forgejo repos, prefer a repo `post-receive` hook that calls
-the same wrapper against the pushed revision. See
+For gateway-local Forgejo repos, prefer a repo `post-receive` hook that queues
+the pushed revision into the shared Forgejo data bind mount, plus a host-side
+watcher that calls the same wrapper. See
 [docs/forgejo-auto-deploy.md](docs/forgejo-auto-deploy.md).
 
 The three app ids are:

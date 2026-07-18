@@ -5,15 +5,14 @@ local Forgejo migration. For gateway-local Forgejo repos, the preferred deploy
 path is now:
 
 1. push to `main` in Forgejo
-2. Forgejo runs a repo `post-receive` Git hook
-3. the hook calls `/opt/gateway-control-plane/deploy/bin/deploy-app.sh`
-4. `deploy-app.sh` rolls the target app through the normal blue/green flow
+2. Forgejo runs a repo `post-receive` hook inside the Forgejo container
+3. the hook writes a deploy request JSON file into the shared Forgejo data bind mount
+4. a host-side systemd watcher processes that queue as `jimmothy`
+5. the watcher calls `/opt/gateway-control-plane/deploy/bin/deploy-app.sh`
 
-This matches the current HomeOps constraints better than GitHub-style runners:
-
-- the Forgejo server is already on the gateway host
-- `deploy-app.sh` must run against the live host config
-- the gateway host does not yet have general SSH pull credentials for Forgejo
+That extra queue hop matters on this host because Forgejo hooks do not run on
+the gateway host namespace. They run inside the `homeops-git-forge-forgejo-1`
+container, which cannot safely call the host deploy wrapper directly.
 
 ## Required repoUrl change
 
@@ -29,7 +28,7 @@ Example shape:
 ```json
 {
   "id": "gateway-control-plane",
-  "repoUrl": "file:///srv/data/forgejo/git/repositories/<owner>/gateway-control-plane.git"
+  "repoUrl": "/srv/data/forgejo/git/repositories/<owner>/gateway-control-plane.git"
 }
 ```
 
@@ -39,56 +38,79 @@ Use the real local bare-repo path for your Forgejo installation.
 
 Use the helper in `deploy/bin/` to render a repo-local `post-receive` hook.
 
-For `gateway-control-plane` itself:
+For `gateway-control-plane`:
 
 ```bash
 deploy/bin/render-forgejo-post-receive-hook.sh \
   --app gateway-control-plane \
-  --config /opt/gateway-control-plane/configs/gateway.config.json \
-  --control-plane-root /opt/gateway-control-plane \
-  --control-plane-repo-path /srv/data/forgejo/git/repositories/<owner>/gateway-control-plane.git \
   > /tmp/gateway-control-plane-post-receive.sh
 ```
 
-The extra `--control-plane-repo-path` flag is important for this repo. It makes
-the hook refresh the host checkout at `/opt/gateway-control-plane` to the pushed
-revision before it invokes `deploy-app.sh`, so deploy logic changes ship with
-the same push.
-
-For a companion managed app such as `gateway-api`, omit
-`--control-plane-repo-path`:
+Install the rendered script into the Forgejo bare repo:
 
 ```bash
-deploy/bin/render-forgejo-post-receive-hook.sh \
-  --app gateway-api \
-  --config /opt/gateway-control-plane/configs/gateway.config.json \
+install -m 0755 /tmp/gateway-control-plane-post-receive.sh \
+  /srv/data/forgejo/git/repositories/<owner>/gateway-control-plane.git/hooks/post-receive.d/gateway-control-plane-autodeploy
+```
+
+The default queue target is:
+
+```text
+/data/forgejo/deploy-queue/managed-apps
+```
+
+Inside the gateway host, that same directory appears as:
+
+```text
+/srv/data/forgejo/deploy-queue/managed-apps
+```
+
+## Install the host-side queue processor
+
+Use the host-side processor script from this repo:
+
+```bash
+deploy/bin/process-forgejo-deploy-queue.sh \
+  --queue-dir /srv/data/forgejo/deploy-queue/managed-apps \
   --control-plane-root /opt/gateway-control-plane \
-  > /tmp/gateway-api-post-receive.sh
+  --config /opt/gateway-control-plane/configs/gateway.config.json
 ```
 
-## Install the hook in Forgejo
+Recommended systemd units:
 
-Preferred path:
+`/etc/systemd/system/forgejo-managed-app-deploy-queue.service`
 
-- repo Settings
-- Git Hooks
-- `post-receive`
+```ini
+[Unit]
+Description=Process queued Forgejo managed-app deploy requests
 
-Paste the rendered script there.
+[Service]
+Type=oneshot
+User=jimmothy
+WorkingDirectory=/opt/gateway-control-plane
+ExecStart=/opt/gateway-control-plane/deploy/bin/process-forgejo-deploy-queue.sh --queue-dir /srv/data/forgejo/deploy-queue/managed-apps --control-plane-root /opt/gateway-control-plane --config /opt/gateway-control-plane/configs/gateway.config.json
+```
 
-You can also install it through the Forgejo/Gitea Git hook API by updating the
-repository `post-receive` hook content.
+`/etc/systemd/system/forgejo-managed-app-deploy-queue.path`
 
-Conceptually:
+```ini
+[Unit]
+Description=Watch Forgejo managed-app deploy queue
+
+[Path]
+PathExistsGlob=/srv/data/forgejo/deploy-queue/managed-apps/*.json
+Unit=forgejo-managed-app-deploy-queue.service
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then enable it:
 
 ```bash
-curl -X PATCH \
-  -H "Authorization: token <forgejo-token>" \
-  -H "Content-Type: application/json" \
-  <forgejo-base-url>/api/v1/repos/<owner>/<repo>/hooks/git/post-receive
+sudo systemctl daemon-reload
+sudo systemctl enable --now forgejo-managed-app-deploy-queue.path
 ```
-
-with a JSON body containing the rendered script in `content`.
 
 ## Hook behavior
 
@@ -96,15 +118,21 @@ The rendered hook:
 
 - ignores non-`main` refs by default
 - ignores branch deletes
-- serializes deploys with `flock` when available
-- logs to `/var/log/gateway-control-plane/<app>-forgejo-deploy.log`
-- backgrounds the deploy so the git push is not blocked for the full rollout
+- writes one JSON request per push target revision
+- logs to `/data/forgejo/deploy-queue/logs/<app>-forgejo-autodeploy.log`
+
+The host-side processor:
+
+- serializes queue processing with `flock`
+- archives successful requests under `processed/`
+- moves failed requests under `failed/`
+- logs deploy output and status to `forgejo-deploy-queue.log`
 
 ## When to keep GitHub Actions
 
 Keep the legacy GitHub workflow only when the repo is still GitHub-hosted or
 when the runner model is still the source of truth for that repo.
 
-For gateway-local Forgejo repos, the hook-based path is preferred because it
-deploys from the local source of truth and does not depend on external CI
+For gateway-local Forgejo repos, the queue-backed hook path is preferred because
+it deploys from the local source of truth and does not depend on external CI
 control.
