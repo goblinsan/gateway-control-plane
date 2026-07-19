@@ -402,6 +402,7 @@ export const INIT_SCRIPT = `    // Keyboard nav across top-tab and sub-tab butto
       });
     });
     // ── Monitoring button handlers ──
+    hydrateStoredHealthSnapshot();
     document.getElementById('refreshHealthButton').addEventListener('click', async () => {
       const btn = document.getElementById('refreshHealthButton');
       await withBusyButton(btn, 'Refreshing…', async () => {
@@ -465,10 +466,8 @@ export const INIT_SCRIPT = `    // Keyboard nav across top-tab and sub-tab butto
         await withBusyButton(overviewRunCheckBtn, 'Checking…', async () => {
           try {
             const snapshot = await requestJson('POST', '/api/monitoring/health/check', {}, 30000);
-            state.healthSnapshot = snapshot;
+            applyHealthSnapshot(snapshot);
             state.dataLoaded.healthSnapshot = Date.now();
-            renderHealthTargets();
-            renderOverview();
             setStatus('Health check completed');
           } catch (err) {
             setStatus(err.message, 'error');
@@ -481,10 +480,8 @@ export const INIT_SCRIPT = `    // Keyboard nav across top-tab and sub-tab butto
       await withBusyButton(btn, 'Checking…', async () => {
         try {
           const snapshot = await requestJson('POST', '/api/monitoring/health/check', {}, 30000);
-          state.healthSnapshot = snapshot;
+          applyHealthSnapshot(snapshot);
           state.dataLoaded.healthSnapshot = Date.now();
-          renderHealthTargets();
-          renderOverview();
           setStatus('Health check completed');
         } catch (err) { setStatus(err.message, 'error'); }
       });

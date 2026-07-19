@@ -113,6 +113,8 @@ test('renderAdminScript preserves critical state invariants', () => {
   assert.ok(script.includes('activeSubTabs'), 'activeSubTabs key present');
   assert.ok(script.includes('dataLoaded'), 'dataLoaded key present');
   assert.ok(script.includes('subTabLoading'), 'subTabLoading key present');
+  assert.ok(script.includes('healthSnapshotError'), 'health snapshot error state key present');
+  assert.ok(script.includes('monitoringDrilldownFilter'), 'monitoring drilldown filter state key present');
   assert.ok(script.includes('projectTrackingOverview'), 'project tracking overview state key present');
   assert.ok(script.includes('assistantBuilderState'), 'assistant builder wizard state present');
 
@@ -127,6 +129,17 @@ test('renderAdminScript preserves critical state invariants', () => {
   assert.ok(script.includes('fetchRuntime()'), 'fetchRuntime unconditional call present');
   assert.ok(script.includes('isStale('), 'isStale staleness guard present for sub-tab data');
   assert.ok(script.includes('/api/project-tracking/overview'), 'project tracking overview fetch present');
+  assert.ok(script.includes('gateway-admin-health-snapshot'), 'last-good health snapshot cache key present');
+  assert.ok(script.includes('applyHealthSnapshot'), 'shared health snapshot setter present');
+  assert.ok(script.includes('renderMonitoringDrilldown'), 'monitoring drilldown renderer present');
+});
+
+test('monitoring markup exposes clickable summary cards and drilldown host', () => {
+  assert.ok(ADMIN_MARKUP.includes('data-monitor-filter="healthy"'), 'healthy summary card is filterable');
+  assert.ok(ADMIN_MARKUP.includes('data-monitor-filter="degraded"'), 'degraded summary card is filterable');
+  assert.ok(ADMIN_MARKUP.includes('data-monitor-filter="action"'), 'needs-action summary card is filterable');
+  assert.ok(ADMIN_MARKUP.includes('data-monitor-filter="all"'), 'last-check summary card opens full snapshot');
+  assert.ok(ADMIN_MARKUP.includes('monitoringDrilldownContainer'), 'monitoring drilldown container present');
 });
 
 test('renderAdminPage composes head + markup + script into a full document', () => {

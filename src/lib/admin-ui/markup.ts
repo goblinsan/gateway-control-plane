@@ -1028,15 +1028,16 @@ export const ADMIN_MARKUP: string = `<body>
             </div>
           </div>
           <div class="monitor-dashboard-grid" id="monitorDashboardGrid">
-            <div class="monitor-dashboard-card is-healthy"><div class="monitor-dashboard-count" data-monitor-count="healthy">—</div><div class="monitor-dashboard-label">Healthy</div><div class="monitor-dashboard-detail" data-monitor-detail="healthy">Loading snapshot…</div></div>
-            <div class="monitor-dashboard-card is-degraded"><div class="monitor-dashboard-count" data-monitor-count="degraded">—</div><div class="monitor-dashboard-label">Degraded</div><div class="monitor-dashboard-detail" data-monitor-detail="degraded">Loading snapshot…</div></div>
-            <div class="monitor-dashboard-card is-action"><div class="monitor-dashboard-count" data-monitor-count="action">—</div><div class="monitor-dashboard-label">Needs Action</div><div class="monitor-dashboard-detail" data-monitor-detail="action">Loading snapshot…</div></div>
-            <div class="monitor-dashboard-card"><div class="monitor-dashboard-count" data-monitor-count="lastChecked">—</div><div class="monitor-dashboard-label">Last Check</div><div class="monitor-dashboard-detail" data-monitor-detail="lastChecked">No snapshot yet.</div></div>
+            <button type="button" class="monitor-dashboard-card is-healthy" data-monitor-filter="healthy"><div class="monitor-dashboard-count" data-monitor-count="healthy">—</div><div class="monitor-dashboard-label">Healthy</div><div class="monitor-dashboard-detail" data-monitor-detail="healthy">Loading snapshot…</div></button>
+            <button type="button" class="monitor-dashboard-card is-degraded" data-monitor-filter="degraded"><div class="monitor-dashboard-count" data-monitor-count="degraded">—</div><div class="monitor-dashboard-label">Degraded</div><div class="monitor-dashboard-detail" data-monitor-detail="degraded">Loading snapshot…</div></button>
+            <button type="button" class="monitor-dashboard-card is-action" data-monitor-filter="action"><div class="monitor-dashboard-count" data-monitor-count="action">—</div><div class="monitor-dashboard-label">Needs Action</div><div class="monitor-dashboard-detail" data-monitor-detail="action">Loading snapshot…</div></button>
+            <button type="button" class="monitor-dashboard-card" data-monitor-filter="all"><div class="monitor-dashboard-count" data-monitor-count="lastChecked">—</div><div class="monitor-dashboard-label">Last Check</div><div class="monitor-dashboard-detail" data-monitor-detail="lastChecked">No snapshot yet.</div></button>
           </div>
         </div>
         <div id="monitoringDisabledBanner" class="card" style="border-left:3px solid var(--color-warning);display:none">
           <p><strong>Monitoring is not enabled.</strong> Configure Postgres and Redis in the Monitoring Settings sub-tab, then enable monitoring to start collecting health data.</p>
         </div>
+        <div id="monitoringDrilldownContainer" class="section-list"></div>
         <div id="monitoringBackendsContainer" class="section-list"></div>
         <details class="card section-card" open>
           <summary>

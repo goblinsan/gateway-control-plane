@@ -89,6 +89,16 @@ export const OPS_CARDS_CSS: string = `    .bootstrap-task-list {
       border-radius: 4px;
       padding: 12px 14px;
       border-left: 3px solid var(--muted);
+      color: inherit;
+      cursor: pointer;
+      font: inherit;
+      text-align: left;
+      width: 100%;
+    }
+    .monitor-dashboard-card:hover,
+    .monitor-dashboard-card.is-selected {
+      border-color: var(--accent-strong);
+      box-shadow: 0 0 0 2px rgba(22, 51, 54, 0.08);
     }
     .monitor-dashboard-card.is-healthy { border-left-color: var(--color-success, #2ecc71); }
     .monitor-dashboard-card.is-degraded { border-left-color: var(--color-warning, #e6a419); }
@@ -112,6 +122,59 @@ export const OPS_CARDS_CSS: string = `    .bootstrap-task-list {
       font-size: 12px;
       color: var(--muted);
       line-height: 1.35;
+    }
+    .monitor-drilldown-card {
+      margin-top: 12px;
+    }
+    .monitor-drilldown-warning {
+      margin: 8px 0;
+      padding: 8px 10px;
+      border: 1px solid var(--color-warning);
+      border-radius: 4px;
+      background: rgba(230, 164, 25, 0.08);
+      color: #6c4a00;
+      font-size: 12px;
+    }
+    .monitor-drilldown-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .monitor-drilldown-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--panel);
+    }
+    .monitor-action-copy {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .monitor-drilldown-meta {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+      min-width: 220px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .monitor-target-details {
+      margin: 8px 0 0;
+      max-height: 8rem;
+      overflow: auto;
+      background: var(--color-card);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 8px;
+      font-size: 11px;
+      white-space: pre-wrap;
     }
     .secrets-intro {
       border-left: 4px solid rgba(183, 128, 0, 0.6);

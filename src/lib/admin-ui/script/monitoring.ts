@@ -4,6 +4,49 @@
  */
 
 export const MONITORING_SCRIPT = `    // ── Monitoring: fetch + render ──
+    const HEALTH_SNAPSHOT_STORAGE_KEY = 'gateway-admin-health-snapshot';
+
+    function isUsableHealthSnapshot(snapshot) {
+      return !!(snapshot && Array.isArray(snapshot.targets));
+    }
+
+    function persistHealthSnapshot(snapshot) {
+      if (!isUsableHealthSnapshot(snapshot)) return;
+      try {
+        window.localStorage.setItem(HEALTH_SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshot));
+      } catch {
+        // ignore storage failures
+      }
+    }
+
+    function loadStoredHealthSnapshot() {
+      try {
+        const raw = window.localStorage.getItem(HEALTH_SNAPSHOT_STORAGE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return isUsableHealthSnapshot(parsed) ? parsed : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function applyHealthSnapshot(snapshot, options) {
+      const opts = options || {};
+      if (!isUsableHealthSnapshot(snapshot)) return false;
+      state.healthSnapshot = snapshot;
+      state.healthSnapshotError = null;
+      if (opts.persist !== false) persistHealthSnapshot(snapshot);
+      renderHealthTargets();
+      renderOverview();
+      return true;
+    }
+
+    function hydrateStoredHealthSnapshot() {
+      if (state.healthSnapshot) return false;
+      const stored = loadStoredHealthSnapshot();
+      if (!stored) return false;
+      return applyHealthSnapshot(stored, { persist: false });
+    }
 
     function renderCoachDiagnostics() {
       const output = document.getElementById('coachDiagnosticsOutput');
@@ -90,11 +133,12 @@ export const MONITORING_SCRIPT = `    // ── Monitoring: fetch + render ─�
     async function fetchHealthSnapshot() {
       try {
         const data = await requestJson('GET', '/api/monitoring/health', null, 15000);
-        state.healthSnapshot = data;
-        renderHealthTargets();
-        renderOverview();
+        applyHealthSnapshot(data);
       } catch (err) {
-        state.healthSnapshot = null;
+        state.healthSnapshotError = err && err.message ? err.message : String(err);
+        if (!state.healthSnapshot) {
+          hydrateStoredHealthSnapshot();
+        }
         renderHealthTargets();
         renderOverview();
       }
@@ -221,6 +265,156 @@ export const MONITORING_SCRIPT = `    // ── Monitoring: fetch + render ─�
       return '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + color + ';margin-right:6px" title="' + escapeHtml(status) + '"></span>';
     }
 
+    function targetStatusWeight(status) {
+      return status === 'down' ? 0 : status === 'degraded' ? 1 : status === 'unknown' ? 2 : 3;
+    }
+
+    function isActionTarget(target) {
+      return target && target.status !== 'healthy';
+    }
+
+    function monitoringTargetAction(target) {
+      if (!target) return 'No target details available.';
+      if (target.kind === 'monitoring-datastore') {
+        if (target.id === 'postgres') {
+          return target.status === 'healthy'
+            ? 'No action needed. Database auth and TCP reachability are working.'
+            : 'Check Postgres reachability and verify the configured database, user, and password match the DB role.';
+        }
+        if (target.id === 'redis') {
+          return target.status === 'healthy'
+            ? 'No action needed. Redis is reachable.'
+            : 'Check the Redis container and network path from the gateway control plane.';
+        }
+      }
+      if (target.kind === 'node') {
+        return target.status === 'healthy'
+          ? 'No action needed. SSH reachability is working.'
+          : 'Check node power/network, SSH access, and whether the configured user/key can connect.';
+      }
+      if (target.kind === 'app') {
+        const details = target.details || {};
+        const url = details.url ? ' Health URL: ' + details.url + '.' : '';
+        return target.status === 'healthy'
+          ? 'No action needed. Active app health endpoint is responding.'
+          : 'Inspect the active slot container and health endpoint.' + url;
+      }
+      if (target.kind === 'workload') {
+        const details = target.details || {};
+        const service = details.service || {};
+        const containers = Array.isArray(details.containers) ? details.containers : [];
+        const unhealthy = containers.filter(function(c) {
+          return c && c.state !== 'running' || (c && typeof c.status === 'string' && c.status.toLowerCase().includes('unhealthy'));
+        }).map(function(c) { return c.name || c.service || 'container'; });
+        if (target.status === 'healthy') {
+          return 'No action needed. Workload container status is healthy.';
+        }
+        if (unhealthy.length > 0) {
+          return 'Inspect container logs/status for: ' + unhealthy.slice(0, 3).join(', ') + (unhealthy.length > 3 ? ' +' + (unhealthy.length - 3) + ' more' : '') + '.';
+        }
+        if (service && service.running === false) {
+          return 'Start or redeploy the workload; the primary service is not running.';
+        }
+        return 'Inspect workload status and container health details.';
+      }
+      return target.status === 'healthy' ? 'No action needed.' : 'Inspect target details and recent history.';
+    }
+
+    function monitoringTargetDetailHtml(target) {
+      const uptime = target.uptimePercent24h !== null && target.uptimePercent24h !== undefined ? target.uptimePercent24h.toFixed(1) + '%' : '—';
+      const latency = target.responseTimeMs !== null && target.responseTimeMs !== undefined ? target.responseTimeMs + 'ms' : '—';
+      const checked = target.lastChecked ? new Date(target.lastChecked).toLocaleString() : 'not checked yet';
+      const detailJson = target.details ? '<pre class="monitor-target-details">' + escapeHtml(JSON.stringify(target.details, null, 2)) + '</pre>' : '';
+      return '<div class="monitor-drilldown-row">' +
+        '<div>' +
+          '<div>' + statusBadge(target.status) + '<strong>' + escapeHtml(target.label || target.id || 'unknown') + '</strong> ' +
+            '<span class="pill">' + escapeHtml(target.kind || '') + '</span> ' +
+            '<span class="pill">' + escapeHtml(target.id || '') + '</span></div>' +
+          '<div class="monitor-action-copy"><strong>Action:</strong> ' + escapeHtml(monitoringTargetAction(target)) + '</div>' +
+          detailJson +
+        '</div>' +
+        '<div class="monitor-drilldown-meta">' +
+          '<span title="24h uptime">⬆ ' + uptime + '</span>' +
+          '<span title="Response time">⏱ ' + latency + '</span>' +
+          '<span title="Last checked">🕐 ' + escapeHtml(checked) + '</span>' +
+          '<button class="health-history-btn" data-kind="' + escapeHtml(target.kind) + '" data-id="' + escapeHtml(target.id) + '">History</button>' +
+        '</div>' +
+      '</div>';
+    }
+
+    function monitoringDrilldownTargets(filter) {
+      const snapshot = state.healthSnapshot;
+      const targets = snapshot && Array.isArray(snapshot.targets) ? snapshot.targets.slice() : [];
+      if (filter === 'healthy') {
+        return targets.filter(function(t) { return t.status === 'healthy'; });
+      }
+      if (filter === 'degraded') {
+        return targets.filter(function(t) { return t.status === 'degraded'; });
+      }
+      if (filter === 'action') {
+        return targets.filter(isActionTarget).sort(function(a, b) {
+          return targetStatusWeight(a.status) - targetStatusWeight(b.status);
+        });
+      }
+      return targets.sort(function(a, b) {
+        return targetStatusWeight(a.status) - targetStatusWeight(b.status);
+      });
+    }
+
+    function renderMonitoringDrilldown() {
+      const container = document.getElementById('monitoringDrilldownContainer');
+      if (!container) return;
+      const snapshot = state.healthSnapshot;
+      const targets = snapshot && Array.isArray(snapshot.targets) ? snapshot.targets : [];
+      if (targets.length === 0) {
+        container.innerHTML = '';
+        return;
+      }
+      const filter = state.monitoringDrilldownFilter || 'action';
+      const selected = monitoringDrilldownTargets(filter);
+      const title = filter === 'healthy' ? 'Healthy Targets'
+        : filter === 'degraded' ? 'Degraded Targets'
+        : filter === 'action' ? 'Needs Action'
+        : 'Last Snapshot';
+      const subtitle = selected.length === 0
+        ? 'No targets in this group.'
+        : selected.length + ' target' + (selected.length === 1 ? '' : 's') + ' in this group.';
+      const staleWarning = state.healthSnapshotError
+        ? '<div class="monitor-drilldown-warning">Showing last good snapshot. Latest refresh failed: ' + escapeHtml(state.healthSnapshotError) + '</div>'
+        : '';
+      container.innerHTML =
+        '<div class="card card-quiet monitor-drilldown-card">' +
+          '<div class="split-actions">' +
+            '<div>' +
+              '<span class="pill">Health Detail</span>' +
+              '<h3>' + escapeHtml(title) + '</h3>' +
+              '<p>' + escapeHtml(subtitle) + '</p>' +
+            '</div>' +
+            '<div style="font-size:.85rem;color:var(--color-muted)">Snapshot: ' + escapeHtml(snapshot.collectedAt ? new Date(snapshot.collectedAt).toLocaleString() : 'unknown') + '</div>' +
+          '</div>' +
+          staleWarning +
+          (selected.length === 0
+            ? '<div class="overview-empty">No targets match this filter.</div>'
+            : '<div class="monitor-drilldown-list">' + selected.map(monitoringTargetDetailHtml).join('') + '</div>') +
+        '</div>';
+      container.querySelectorAll('.health-history-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(event) {
+          if (event && event.stopPropagation) event.stopPropagation();
+          fetchHealthHistory(btn.dataset.kind, btn.dataset.id);
+        });
+      });
+    }
+
+    function selectMonitoringDrilldown(filter) {
+      state.monitoringDrilldownFilter = filter || 'action';
+      renderMonitorDashboard();
+      renderMonitoringDrilldown();
+      const container = document.getElementById('monitoringDrilldownContainer');
+      if (container && container.scrollIntoView) {
+        container.scrollIntoView({ block: 'nearest' });
+      }
+    }
+
     function renderMonitorDashboard() {
       const grid = document.getElementById('monitorDashboardGrid');
       if (!grid) return;
@@ -249,6 +443,7 @@ export const MONITORING_SCRIPT = `    // ── Monitoring: fetch + render ─�
         set('degraded', 0, 'No snapshot yet — run a check.');
         set('action', 0, 'No targets reporting.');
         set('lastChecked', '—', 'No snapshot yet.');
+        renderMonitoringDrilldown();
         return;
       }
       set('healthy', counts.healthy, counts.healthy === 1 ? '1 target healthy.' : counts.healthy + ' targets healthy.');
@@ -265,6 +460,15 @@ export const MONITORING_SCRIPT = `    // ── Monitoring: fetch + render ─�
       } else {
         set('lastChecked', '—', 'Awaiting first snapshot.');
       }
+      grid.querySelectorAll('[data-monitor-filter]').forEach(function(card) {
+        const selected = card.dataset.monitorFilter === (state.monitoringDrilldownFilter || 'action');
+        card.classList.toggle('is-selected', selected);
+        card.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        card.onclick = function() {
+          selectMonitoringDrilldown(card.dataset.monitorFilter || 'action');
+        };
+      });
+      renderMonitoringDrilldown();
     }
 
     function renderHealthTargets() {

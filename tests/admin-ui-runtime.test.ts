@@ -147,6 +147,7 @@ interface AdminVmContext {
     subTabLoading: Record<string, boolean>;
     config: unknown;
     healthSnapshot: unknown;
+    healthSnapshotError: unknown;
     runtime: unknown;
     actionFeedCollapsed: boolean;
   };
@@ -161,6 +162,8 @@ interface AdminVmContext {
   setCurrentAction(message: string, kind?: string): void;
   syncRawJson(): void;
   escapeHtml(value: unknown): string;
+  fetchHealthSnapshot(): Promise<void>;
+  hydrateStoredHealthSnapshot(): boolean;
 }
 
 /**
@@ -181,6 +184,7 @@ function buildContext(
   }),
 ): AdminVmContext {
   const elements: Record<string, ElementStub> = {};
+  const localStorageEntries = new Map<string, string>();
 
   const doc = {
     querySelector(_sel: string) { return null; },
@@ -198,7 +202,10 @@ function buildContext(
   const ctx = vm.createContext({
     document: doc,
     window: {
-      localStorage: { getItem: () => null, setItem: () => {} },
+      localStorage: {
+        getItem: (key: string) => localStorageEntries.get(key) ?? null,
+        setItem: (key: string, value: string) => { localStorageEntries.set(key, String(value)); },
+      },
       location: { pathname: '/' },
     },
     fetch: fetchStub,
@@ -434,6 +441,33 @@ test('loadSubTabData mon-health + fresh snapshot makes no network call', async (
 
   assertNotFetched(calls, '/api/monitoring/health', 'mon-health does not re-fetch a fresh snapshot');
   assert.equal(calls.length, 0, 'no fetches at all when data is fresh');
+});
+
+test('fetchHealthSnapshot preserves last good snapshot when refresh fails', async () => {
+  const lastGood = {
+    targets: [
+      {
+        kind: 'app',
+        id: 'gateway-control-plane',
+        label: 'gateway-control-plane',
+        status: 'healthy',
+        responseTimeMs: 12,
+        details: { statusCode: 200 },
+        lastChecked: '2026-07-19T10:00:00.000Z',
+        uptimePercent24h: 100,
+      },
+    ],
+    collectedAt: '2026-07-19T10:00:00.000Z',
+  };
+  const ctx = buildContext(async () => {
+    throw new Error('network unavailable');
+  });
+  ctx.__exposedState.healthSnapshot = lastGood;
+
+  await ctx.fetchHealthSnapshot();
+
+  assert.equal(ctx.__exposedState.healthSnapshot, lastGood, 'last good snapshot is retained');
+  assert.equal(ctx.__exposedState.healthSnapshotError, 'network unavailable');
 });
 
 test('loadSubTabData mon-benchmarks + stale runs calls fetchBenchmarkRuns', async () => {

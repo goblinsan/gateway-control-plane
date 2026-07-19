@@ -23,6 +23,8 @@ export function renderScriptState(defaultWorkflowSeedPath: string): string {
       kulrsActivityStatus: null,
       coachDiagnostics: null,
       healthSnapshot: null,
+      healthSnapshotError: null,
+      monitoringDrilldownFilter: 'action',
       alertSummary: null,
       projectTrackingOverview: null,
       benchmarkRuns: [],

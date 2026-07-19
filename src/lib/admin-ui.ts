@@ -1657,6 +1657,7 @@ export async function startAdminServer(options: AdminServerOptions): Promise<voi
   const initialConfig = await loadGatewayConfig(options.configPath);
   const remoteDeployJobs = new Map<string, RemoteDeployJobRecord>();
   const latestRemoteDeployJobByWorkload = new Map<string, string>();
+  let activeHealthCollectorKey: string | null = null;
   const REMOTE_DEPLOY_JOB_TTL_MS = 6 * 60 * 60 * 1000;
   const queueRemoteDeployJobPersist = (record: RemoteDeployJobRecord): void => {
     void persistRemoteDeployJobRecord(options.buildOutDir, record).catch((error) => {
@@ -2682,10 +2683,7 @@ export async function startAdminServer(options: AdminServerOptions): Promise<voi
             sendJson(response, 200, { targets: [], collectedAt: new Date().toISOString() });
             return;
           }
-          // Ensure pool is ready
-          try { getPool(); } catch {
-            await initMetrics(config.monitoring);
-          }
+          await ensureHealthCollectorStarted(config);
           const targets = buildMonitoringTargets(config);
           const snapshot = await buildHealthSnapshot(targets);
           sendJson(response, 200, snapshot);
@@ -2708,7 +2706,7 @@ export async function startAdminServer(options: AdminServerOptions): Promise<voi
           return;
         }
         try {
-          await ensureMonitoringReady(config);
+          await ensureHealthCollectorStarted(config);
         } catch (initErr) {
           sendJson(response, 500, { error: `Failed to connect to monitoring backend: ${initErr instanceof Error ? initErr.message : initErr}` });
           return;
@@ -3002,14 +3000,40 @@ export async function startAdminServer(options: AdminServerOptions): Promise<voi
     };
   }
 
+  async function ensureHealthCollectorStarted(config: GatewayConfig): Promise<void> {
+    await ensureMonitoringReady(config);
+    const monitoring = config.monitoring;
+    if (!monitoring?.enabled) {
+      return;
+    }
+
+    const key = JSON.stringify({
+      interval: monitoring.healthCheckIntervalSeconds,
+      postgresHost: monitoring.postgres.host,
+      postgresPort: monitoring.postgres.port,
+      redisHost: monitoring.redis.host,
+      redisPort: monitoring.redis.port,
+      targetCounts: {
+        nodes: config.workerNodes.filter((node) => node.enabled).length,
+        apps: config.apps.filter((app) => app.enabled).length,
+        workloads: config.remoteWorkloads.filter((workload) => workload.enabled).length,
+      },
+    });
+    if (activeHealthCollectorKey === key) {
+      return;
+    }
+
+    const probe = createHealthProbe(config);
+    startHealthCollector(monitoring.healthCheckIntervalSeconds, probe);
+    activeHealthCollectorKey = key;
+    console.log('[monitoring] Health collector ensured');
+  }
+
   // Start monitoring if enabled in config
   try {
     const config = await loadGatewayConfig(options.configPath);
     if (config.monitoring?.enabled) {
-      await initMetrics(config.monitoring);
-      const probe = createHealthProbe(config);
-      startHealthCollector(config.monitoring.healthCheckIntervalSeconds, probe);
-      console.log('[monitoring] Health collector started');
+      await ensureHealthCollectorStarted(config);
     }
   } catch (err) {
     console.error('[monitoring] Failed to initialize:', err instanceof Error ? err.message : err);
