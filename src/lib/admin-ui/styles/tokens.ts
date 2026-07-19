@@ -60,5 +60,16 @@ export const TOKENS_CSS: string = `    :root {
       --danger: var(--p26-down);
       --ok: var(--p26-healthy);
       --shadow: rgba(47, 62, 70, 0.10);
+      --border: var(--p26-border);
+      --fg: var(--p26-text);
+      --bg-alt: var(--p26-surface-raised);
+      --color-accent: var(--p26-accent);
+      --color-bg: var(--p26-bg-base);
+      --color-border: var(--p26-border);
+      --color-card: var(--p26-surface);
+      --color-error: var(--p26-down);
+      --color-muted: var(--p26-text-muted);
+      --color-success: var(--p26-healthy);
+      --color-warning: var(--p26-degraded);
     }
 `;

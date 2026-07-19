@@ -49,9 +49,6 @@ export function renderAdminHead(basePath: string, faviconDataUri: string): strin
   <meta name="gateway-base-path" content="${basePath}" />
   <title>Gateway Control Plane</title>
   <link rel="icon" type="image/svg+xml" href="${faviconDataUri}" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Passion+One:wght@400;700;900&family=Karla:wght@400;500;700&family=Fira+Sans:wght@400;500;600;700&display=swap" />
   <style>
 ${STYLESHEET}  </style>
 </head>

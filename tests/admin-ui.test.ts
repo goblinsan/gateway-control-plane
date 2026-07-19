@@ -1,20 +1,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 import { renderAdminPage, renderAdminHead, ADMIN_MARKUP, renderAdminScript } from '../src/lib/admin-ui/index.ts';
+import { WIRED_ELEMENT_IDS, STYLE_MODULE_CLASSES } from './admin-ui-invariants.ts';
+import { TOKENS_CSS } from '../src/lib/admin-ui/styles/tokens.ts';
+import { BASE_CSS } from '../src/lib/admin-ui/styles/base.ts';
+import { FORMS_CSS } from '../src/lib/admin-ui/styles/forms.ts';
+import { DOCK_CSS } from '../src/lib/admin-ui/styles/dock.ts';
+import { OPS_CARDS_CSS } from '../src/lib/admin-ui/styles/ops-cards.ts';
+import { SHELL_NAV_CSS } from '../src/lib/admin-ui/styles/shell-nav.ts';
+import { CONTENT_CARDS_CSS } from '../src/lib/admin-ui/styles/content-cards.ts';
+import { RESPONSIVE_CSS } from '../src/lib/admin-ui/styles/responsive.ts';
+import { WIZARDS_CSS } from '../src/lib/admin-ui/styles/wizards.ts';
+import { ASSISTANT_CSS } from '../src/lib/admin-ui/styles/assistant.ts';
+import { OVERVIEW_CSS } from '../src/lib/admin-ui/styles/overview.ts';
 
 const BASE = '/admin/';
 const FAVICON = 'data:image/svg+xml;utf8,TEST';
 const SEED_PATH = '/test/workflow-seed.json';
 
-// Inputs used to produce the committed golden file (tests/admin-ui.golden.html).
-// These three values are intentionally different from BASE/FAVICON/SEED_PATH so
-// the golden test exercises actual interpolation rather than incidentally matching.
-const GOLDEN_BASE = '/admin/';
-const GOLDEN_FAVICON = 'data:image/svg+xml;utf8,TEST-FAVICON';
-const GOLDEN_SEED = '/test/workflow-seed.json';
+const STYLE_MODULES: Record<string, string> = {
+  tokens: TOKENS_CSS,
+  base: BASE_CSS,
+  forms: FORMS_CSS,
+  dock: DOCK_CSS,
+  'ops-cards': OPS_CARDS_CSS,
+  'shell-nav': SHELL_NAV_CSS,
+  'content-cards': CONTENT_CARDS_CSS,
+  responsive: RESPONSIVE_CSS,
+  wizards: WIZARDS_CSS,
+  assistant: ASSISTANT_CSS,
+  overview: OVERVIEW_CSS,
+};
 
 function page(): string {
   return renderAdminPage({
@@ -132,30 +148,54 @@ test('composition does not double-emit structural tags', () => {
   }
 });
 
-test('renderAdminPage output matches committed golden fixture', async () => {
-  // This is the authoritative composition regression test. The golden file was
-  // generated from the extracted modules immediately after the modularization
-  // and committed alongside them. Any change to head.ts, markup.ts, script.ts,
-  // or index.ts that alters the rendered output will fail here.
-  //
-  // To intentionally update the golden after a deliberate content change, run:
-  //   node --experimental-strip-types -e "
-  //     import { renderAdminPage } from './src/lib/admin-ui/index.ts';
-  //     import { writeFile } from 'node:fs/promises';
-  //     const html = renderAdminPage({
-  //       basePath: '/admin/',
-  //       faviconDataUri: 'data:image/svg+xml;utf8,TEST-FAVICON',
-  //       defaultWorkflowSeedPath: '/test/workflow-seed.json',
-  //     });
-  //     await writeFile('tests/admin-ui.golden.html', html);
-  //   "
-  const goldenPath = join(dirname(fileURLToPath(import.meta.url)), 'admin-ui.golden.html');
-  const expected = await readFile(goldenPath, 'utf8');
-  const actual = renderAdminPage({
-    basePath: GOLDEN_BASE,
-    faviconDataUri: GOLDEN_FAVICON,
-    defaultWorkflowSeedPath: GOLDEN_SEED,
-  });
-  assert.equal(actual.length, expected.length, 'golden: rendered length differs');
-  assert.equal(actual, expected, 'golden: rendered content differs from committed fixture');
+// The byte-exact golden fixture was retired when the stylesheet split into
+// independently rewritable modules. The structural tests below pin what the
+// golden actually protected: the script↔markup wiring contract, tab routing
+// integrity, each style module's selector coverage, and the token closure —
+// while leaving declaration values free to change.
+
+test('every markup element the script wires up stays present', () => {
+  const script = renderAdminScript({ defaultWorkflowSeedPath: SEED_PATH });
+  for (const id of WIRED_ELEMENT_IDS) {
+    assert.ok(ADMIN_MARKUP.includes(`id="${id}"`), `markup is missing id="${id}" which the client script looks up`);
+    assert.ok(script.includes(`getElementById('${id}')`) || script.includes(`getElementById("${id}")`), `script no longer references id="${id}"; prune it from admin-ui-invariants.ts in the same change that removed the feature`);
+  }
+});
+
+test('tab and sub-tab buttons target panels that exist', () => {
+  const tabTargets = [...ADMIN_MARKUP.matchAll(/data-tab="([a-z0-9-]+)"/g)].map((m) => m[1]);
+  for (const tab of new Set(tabTargets)) {
+    assert.ok(ADMIN_MARKUP.includes(`data-tab-panel="${tab}"`), `no panel for data-tab="${tab}"`);
+  }
+  const subTargets = [...ADMIN_MARKUP.matchAll(/data-sub-tab="([a-z0-9-]+)"/g)].map((m) => m[1]);
+  for (const sub of new Set(subTargets)) {
+    assert.ok(ADMIN_MARKUP.includes(`data-sub-tab-panel="${sub}"`), `no panel for data-sub-tab="${sub}"`);
+  }
+});
+
+test('each style module keeps styling its frozen class inventory', () => {
+  for (const [moduleName, classes] of Object.entries(STYLE_MODULE_CLASSES)) {
+    const css = STYLE_MODULES[moduleName];
+    assert.ok(typeof css === 'string' && css.length > 0, `style module ${moduleName} is empty`);
+    for (const className of classes) {
+      assert.ok(css.includes(`.${className}`), `style module ${moduleName} dropped .${className}; restore the selector or prune it from admin-ui-invariants.ts alongside the markup/script change that removed it`);
+    }
+  }
+});
+
+test('every CSS variable referenced anywhere is defined in the tokens module', () => {
+  const defined = new Set([...TOKENS_CSS.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]));
+  const sources = [...Object.values(STYLE_MODULES), ADMIN_MARKUP, renderAdminScript({ defaultWorkflowSeedPath: SEED_PATH })];
+  for (const src of sources) {
+    for (const m of src.matchAll(/var\((--[a-z0-9-]+)/g)) {
+      assert.ok(defined.has(m[1]), `var(${m[1]}) is referenced but never defined in styles/tokens.ts`);
+    }
+  }
+});
+
+test('document head has no external stylesheet or font dependencies', () => {
+  const head = renderAdminHead(BASE, FAVICON);
+  assert.ok(!head.includes('fonts.googleapis.com'), 'external Google Fonts reference reintroduced');
+  assert.ok(!head.includes('rel="preconnect"'), 'external preconnect reintroduced');
+  assert.ok(!/<link rel="stylesheet"/.test(head), 'external stylesheet link reintroduced');
 });
